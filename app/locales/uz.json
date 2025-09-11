@@ -1,0 +1,14 @@
+{
+  "start.choose_lang": "Tilni tanlang / Выберите язык",
+  "start.hello": "Assalomu alaykum! Sharh va reyting botiga xush kelibsiz.",
+  "ask.first_name": "Ismingizni yozing:",
+  "ask.last_name": "Familiyangizni yozing (ixtiyoriy):",
+  "ask.phone": "Telefon raqamingizni yuboring (Kontakt tugmasidan foydalaning).",
+  "ask.branch": "Filialni tanlang:",
+  "ask.rating": "Reyting tanlang (1-5 yulduz):",
+  "ask.review": "Sharh matnini yozing (rasm yuborishingiz mumkin).",
+  "saved": "Rahmat! Sharhingiz qabul qilindi.",
+  "admin.menu": "Admin menyu",
+  "admin.stats.header": "📊 Filial statistikasi",
+  "error": "Xatolik yuz berdi. Qayta urinib ko‘ring."
+}

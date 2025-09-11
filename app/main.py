@@ -1,0 +1,103 @@
+import asyncio
+import logging
+from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BotCommand
+
+from app.config import settings
+from app.handlers import user as user_handlers
+from app.handlers import admin as admin_handlers
+from app.db.session import get_session, engine
+from app.db import models
+
+from contextlib import asynccontextmanager
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.middlewares import DbSessionMiddleware
+
+logging.basicConfig(level=logging.INFO)
+
+
+@asynccontextmanager
+async def lifespan(dp: Dispatcher):
+    # DB init (jadval yaratish)
+    async with engine.begin() as conn:
+        await conn.run_sync(models.Base.metadata.create_all)
+    yield
+
+import asyncio
+import logging
+from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BotCommand
+
+from app.config import settings
+from app.handlers import user as user_handlers
+from app.handlers import admin as admin_handlers
+from app.db.session import engine
+from app.db import models
+
+logging.basicConfig(level=logging.INFO)
+
+async def main():
+    bot = Bot(
+        token=settings.BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode="HTML")
+    )
+    dp = Dispatcher(storage=MemoryStorage())
+
+    # Middleware
+    dp.update.middleware(DbSessionMiddleware())
+    dp.include_router(user_handlers.router)
+    dp.include_router(admin_handlers.router)
+
+    await bot.set_my_commands([
+        BotCommand(command="start", description="Boshlash"),
+        BotCommand(command="admin", description="Admin menyu")
+    ])
+
+    async with engine.begin() as conn:
+        await conn.run_sync(models.Base.metadata.create_all)
+
+    await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logging.info("Bot to‘xtatildi")
+async def main():
+    bot = Bot(
+        token=settings.BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode="HTML"),
+    )
+    dp = Dispatcher(storage=MemoryStorage())
+
+    # DB session middleware
+    @dp.update.outer_middleware()
+    async def db_session_mw(handler, event, data):
+        async for session in get_session():
+            data["session"]: AsyncSession = session
+            return await handler(event, data)
+
+    # Routerlarni ulash
+    dp.include_router(user_handlers.router)
+    dp.include_router(admin_handlers.router)
+
+    # Bot buyruqlari
+    await bot.set_my_commands([
+        BotCommand(command="start", description="Boshlash"),
+        BotCommand(command="admin", description="Admin menyu")
+    ])
+
+    async with lifespan(dp):
+        await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logging.info("Bot to‘xtatildi")
