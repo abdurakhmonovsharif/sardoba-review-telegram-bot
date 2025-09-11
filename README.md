@@ -1,7 +1,3 @@
-Zo‘r 👌 Endi PyCharm GitHub’ga ulangan bo‘lsa, README.md faylingizni to‘liq qilib tayyorlab qo‘yaman. Siz shuni loyihangizga qo‘shib qo‘ysangiz bo‘ladi.
-
-Mana tayyor README.md:
-
 # 🌟 Sardoba Review Telegram Bot  
 
 A Telegram bot for collecting **reviews and ratings** of branches.  
@@ -101,7 +97,3 @@ docker compose up -d --build
 📜 License
 
 MIT License © 2025 Sharif Abdurakhmonov
-
----
-
-❓ Endi shu faylni PyCharm ichida `README.md` ga qo‘yib commit-push qilaymi, yoki siz o‘zingiz push qilasiz?
