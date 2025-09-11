@@ -85,11 +85,9 @@ docker compose up -d --build
 
 📊 Example Admin Statistics
 
-📊 Branch Statistics
-
-🏢 Chilonzor — 12 reviews, ⭐ 4.6  
-🏢 Yakkasaroy — 8 reviews, ⭐ 4.3  
-🏢 Sergeli — 15 reviews, ⭐ 4.9
+🏢 Buxoro – 5-mikrorayon, Piridasgir ko‘chasi, Mega bozori yonida — 12 reviews, ⭐ 4.6  
+🏢 Buxoro – Dilkusho ko‘chasi, 2B-uy — 8 reviews, ⭐ 4.3  
+🏢 Kogon – Kogoncha shosse, Kalinin burilishi — 15 reviews, ⭐ 4.6
 
 
 ⸻
