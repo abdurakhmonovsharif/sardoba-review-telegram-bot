@@ -3,7 +3,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from app.db import crud
-from config import settings
+from app.config import settings
 from app.i18n import I18N
 from app.keyboards import (
     branches_kb,
