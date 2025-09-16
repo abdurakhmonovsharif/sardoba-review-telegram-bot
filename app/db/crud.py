@@ -1,8 +1,18 @@
+from aiogram import Bot
 from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import User, Branch, Review, Admin
 from app.config import settings
 from sqlalchemy.orm import joinedload
+
+async def get_review_with_relations(session: AsyncSession, review_id: int) -> Review | None:
+    q = await session.execute(
+        select(Review)
+        .options(joinedload(Review.user), joinedload(Review.branch))
+        .where(Review.id == review_id)
+    )
+    return q.scalar_one_or_none()
+
 async def upsert_user(session: AsyncSession, tg_id: int, **kwargs) -> User:
     q = await session.execute(select(User).where(User.tg_id == tg_id))
     user = q.scalar_one_or_none()
@@ -300,3 +310,51 @@ async def set_admin_group(session: AsyncSession, tg_id: int, group_id: int):
     await session.commit()
     await session.refresh(admin)
     return admin
+
+async def notify_superadmin_group(bot: Bot, session: AsyncSession, super_admin_id: int, review):
+    """Yangi sharh haqida superadmin guruhiga xabar yuborish"""
+
+    # Guruh ID ni olish
+    group_id = await get_admin_group(session, super_admin_id)
+    if not group_id:
+        return  # Agar superadmin uchun group_id yo‘q bo‘lsa, chiqib ketadi
+
+    # User va Branch ma'lumotlarini oldindan yuklab kelish
+    review = await get_review_with_relations(session, review.id)
+    if not review:
+        return
+
+    user = review.user
+    branch = review.branch
+
+    # User haqida ma'lumot
+    name = " ".join(filter(None, [user.first_name, user.last_name])) if user else "-"
+    phone = user.phone if user and user.phone else "-"
+    tg_link = f"<a href='tg://user?id={user.tg_id}'>{name or 'User'}</a>" if user else "-"
+
+    # Caption formatlash
+    caption = (
+        f"🆕 Yangi sharh!\n"
+        f"#{review.id} | ⭐ {review.rating or '-'}\n"
+        f"👤 {tg_link} | 📱 {phone}\n"
+        f"🏢 {branch.name if branch else '-'}\n"
+        f"💬 {review.text or '-'}\n"
+        f"🕒 {review.created_at.strftime('%Y-%m-%d %H:%M')}"
+    )
+
+    try:
+        if review.photo_file_id:
+            await bot.send_photo(
+                chat_id=group_id,
+                photo=review.photo_file_id,
+                caption=caption,
+                parse_mode="HTML"
+            )
+        else:
+            await bot.send_message(
+                chat_id=group_id,
+                text=caption,
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        print(f"[notify_superadmin_group] Guruhga yuborishda xatolik: {e}")
