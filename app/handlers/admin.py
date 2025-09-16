@@ -51,6 +51,13 @@ def branches_menu_kb(t):
     return kb.as_markup()
 
 
+def back_to_branches_kb(t):
+    kb = InlineKeyboardBuilder()
+    kb.button(text=t("common.kb.back", "⬅ Orqaga"), callback_data="adm:br")
+    kb.adjust(1)
+    return kb.as_markup()
+
+
 def users_menu_kb(t):
     kb = InlineKeyboardBuilder()
     kb.button(text=t("admin.kb.users.list", "📃 Foydalanuvchilar ro‘yxati"), callback_data="adm:us:list")
@@ -118,7 +125,15 @@ async def branch_add_start(cb: CallbackQuery, state: FSMContext, session):
         return
     t = await get_t(session, cb.from_user.id)
     await state.set_state(AdminStates.br_add)
-    await cb.message.edit_text(t("admin.branch.add.usage", "Foydalanish: Nomi | Manzil(ixtiyoriy)"), reply_markup=branches_menu_kb(t))
+    # Remove previous menu, then prompt with a back-only keyboard
+    try:
+        await cb.message.delete()
+    except Exception:
+        pass
+    await cb.message.answer(
+        t("admin.branch.add.usage", "Foydalanish: Nomi | Manzil(ixtiyoriy)"),
+        reply_markup=back_to_branches_kb(t)
+    )
 
 
 @router.message(AdminStates.br_add)
@@ -136,7 +151,9 @@ async def branch_add_finish(msg: Message, state: FSMContext, session):
         return
     await crud.create_branch_admin(session, requested_by_tg_id=msg.from_user.id, name=name, address=address)
     await state.clear()
+    # Inform about success, then show branches menu again
     await msg.answer(t("admin.branch.add.success", "Filial qo‘shildi."))
+    await msg.answer(t("admin.branches.title", "🏢 Filiallar"), reply_markup=branches_menu_kb(t))
 
 
 @router.callback_query(F.data == "adm:br:edit")
@@ -164,7 +181,10 @@ async def branch_edit_start(cb: CallbackQuery, state: FSMContext, session):
     branch_id = int(cb.data.split(":")[3])
     await state.update_data(branch_id=branch_id)
     await state.set_state(AdminStates.br_edit)
-    await cb.message.edit_text(t("admin.branch.edit.usage", "Yozing: ID | Yangi nom(ixt.) | Yangi manzil(ixt.)"))
+    await cb.message.edit_text(
+        t("admin.branch.edit.usage", "Yozing: ID | Yangi nom(ixt.) | Yangi manzil(ixt.)"),
+        reply_markup=back_to_branches_kb(t),
+    )
 
 
 @router.message(AdminStates.br_edit)
@@ -192,6 +212,7 @@ async def branch_edit_finish(msg: Message, state: FSMContext, session):
         return
     await state.clear()
     await msg.answer(t("admin.branch.edit.success", "Filial yangilandi."))
+    await msg.answer(t("admin.branches.title", "🏢 Filiallar"), reply_markup=branches_menu_kb(t))
 
 
 @router.callback_query(F.data == "adm:br:del")
