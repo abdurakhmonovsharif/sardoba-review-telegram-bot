@@ -243,3 +243,22 @@ async def get_admin_group(session: AsyncSession, super_admin_id: int) -> int | N
         select(Admin.group_id).where(Admin.tg_id == super_admin_id)
     )
     return q.scalar_one_or_none()
+
+
+async def set_admin_group(session: AsyncSession, tg_id: int, group_id: int):
+    """Superadmin uchun guruh ID ni saqlash (yoki yangilash)."""
+    # faqat SUPER_ADMINS ro'yxatidagi foydalanuvchilar o'zgartira oladi
+    if tg_id not in settings.SUPER_ADMINS:
+        raise ValueError("Not a superadmin")
+
+    q = await session.execute(select(Admin).where(Admin.tg_id == tg_id))
+    admin = q.scalar_one_or_none()
+    if admin is None:
+        # Agar DBda bo'lmasa, super_admin sifatida yaratamiz
+        admin = Admin(tg_id=tg_id, role='super_admin', group_id=group_id)
+        session.add(admin)
+    else:
+        admin.group_id = group_id
+    await session.commit()
+    await session.refresh(admin)
+    return admin
