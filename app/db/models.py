@@ -26,14 +26,18 @@ class Review(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id", ondelete="CASCADE"), index=True)
-    rating: Mapped[int] = mapped_column(Integer)
+    rating: Mapped[int | None] = mapped_column(Integer,nullable=True)
     text: Mapped[str | None] = mapped_column(Text)
     photo_file_id: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # relationships
+    user: Mapped["User"] = relationship("User", backref="reviews")
+    branch: Mapped["Branch"] = relationship("Branch", backref="reviews")
 
 class Admin(Base):
     __tablename__ = "admins"
     id: Mapped[int] = mapped_column(primary_key=True)
     tg_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
+    group_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     role: Mapped[str] = mapped_column(String(20))  # 'admin' | 'super_admin'
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())

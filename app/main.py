@@ -53,9 +53,14 @@ async def main():
     dp.include_router(user_handlers.router)
     dp.include_router(admin_handlers.router)
 
+    from app.i18n import I18N
+    t_uz = I18N("uz").t
+    t_ru = I18N("ru").t
     await bot.set_my_commands([
-        BotCommand(command="start", description="Boshlash"),
-        BotCommand(command="admin", description="Admin menyu")
+        BotCommand(command="start", description=t_uz("cmd.start", "Boshlash")),
+        BotCommand(command="admin", description=t_uz("cmd.admin", "Admin menyu")),
+        BotCommand(command="yangi_sharh", description=t_uz("cmd.new_review", "Yangi sharh")),
+        BotCommand(command="novyy_otzyv", description=t_ru("cmd.new_review", "Новый отзыв")),
     ])
 
     async with engine.begin() as conn:
@@ -79,7 +84,7 @@ async def main():
     @dp.update.outer_middleware()
     async def db_session_mw(handler, event, data):
         async for session in get_session():
-            data["session"]: AsyncSession = session
+            data["session"]: AsyncSession = session # type: ignore
             return await handler(event, data)
 
     # Routerlarni ulash
@@ -87,9 +92,14 @@ async def main():
     dp.include_router(admin_handlers.router)
 
     # Bot buyruqlari
+    from app.i18n import I18N
+    t_uz = I18N("uz").t
+    t_ru = I18N("ru").t
     await bot.set_my_commands([
-        BotCommand(command="start", description="Boshlash"),
-        BotCommand(command="admin", description="Admin menyu")
+        BotCommand(command="start", description=t_uz("cmd.start", "Boshlash")),
+        BotCommand(command="admin", description=t_uz("cmd.admin", "Admin menyu")),
+        BotCommand(command="yangi_sharh", description=t_uz("cmd.new_review", "Yangi sharh")),
+        BotCommand(command="novyy_otzyv", description=t_ru("cmd.new_review", "Новый отзыв")),
     ])
 
     async with lifespan(dp):

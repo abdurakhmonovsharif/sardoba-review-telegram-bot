@@ -1,5 +1,9 @@
 import os
 from pydantic import BaseModel
+from dotenv import load_dotenv
+
+# Load .env from project root so local runs work
+load_dotenv()
 
 class Settings(BaseModel):
     BOT_TOKEN: str = os.getenv("BOT_TOKEN", "")
