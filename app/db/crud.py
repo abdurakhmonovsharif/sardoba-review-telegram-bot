@@ -241,6 +241,7 @@ async def list_reviews_admin(
     q = await session.execute(
         select(Review).options(
             joinedload(Review.user),
+            joinedload(Review.photos),
             joinedload(Review.branch)
             ).order_by(Review.id.desc()).offset(offset).limit(limit)
     )
