@@ -179,7 +179,7 @@ async def submit_review(cb: CallbackQuery, state: FSMContext, session):
     await cb.message.delete()
     await cb.message.answer(t("saved", "Rahmat! Sharhingiz saqlandi 🙏"))
     # Notify group
-    await crud.notify_superadmin_group(session, review, settings.SUPER_ADMINS[0],bot=cb.bot)
+    await crud.notify_superadmin_group(cb.bot,session,settings.SUPER_ADMINS[0],review)
     # Offer to start a new review with a localized command button
     await cb.message.answer(
         t("ask.new_review", "Yangi sharh boshlash uchun tugmani bosing."),
