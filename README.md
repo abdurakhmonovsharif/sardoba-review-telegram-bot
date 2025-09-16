@@ -79,7 +79,7 @@ docker compose up -d --build
 
 4. Interact with the bot
 	•	Send /start → choose language → register → leave a review
-	•	Admins use /admin → view statistics
+	•	Admins use /admin_sardoba → view statistics
 
 ⸻
 

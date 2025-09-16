@@ -70,7 +70,7 @@ def reviews_menu_kb(t):
 
 
 # --- Entry ---
-@router.message(F.text == "/admin")
+@router.message(F.text == "/admin_sardoba")
 async def admin_panel(msg: Message, session):
     if not await is_admin(session, msg.from_user.id):
         t = I18N("uz").t

@@ -58,10 +58,9 @@ async def main():
     t_ru = I18N("ru").t
     await bot.set_my_commands([
         BotCommand(command="start", description=t_uz("cmd.start", "Boshlash")),
-        BotCommand(command="admin", description=t_uz("cmd.admin", "Admin menyu")),
-        BotCommand(command="yangi_sharh", description=t_uz("cmd.new_review", "Yangi sharh")),
-        BotCommand(command="novyy_otzyv", description=t_ru("cmd.new_review", "Новый отзыв")),
-    ])
+        BotCommand(command="new_review", description=t_uz("cmd.new_review", "Yangi sharh")),
+        BotCommand(command="new_review", description=t_ru("cmd.new_review", "Новый отзыв")),
+        ])
 
     async with engine.begin() as conn:
         await conn.run_sync(models.Base.metadata.create_all)
