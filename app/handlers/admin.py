@@ -415,7 +415,7 @@ async def reviews_list(cb: CallbackQuery, session):
         return
     t = await get_t(session, cb.from_user.id)
 
-    reviews = await crud.list_reviews_admin(session, requested_by_tg_id=cb.from_user.id, limit=10)
+    reviews = await crud.list_reviews_admin(session, requested_by_tg_id=cb.from_user.id)
     if not reviews:
         await cb.message.edit_text(t("no_data", "Ma'lumot yo'q"), reply_markup=reviews_menu_kb(t))
         return
@@ -513,7 +513,7 @@ async def review_delete_list(cb: CallbackQuery, session):
     if not await is_admin(session, cb.from_user.id):
         return
     t = await get_t(session, cb.from_user.id)
-    reviews = await crud.list_reviews_admin(session, requested_by_tg_id=cb.from_user.id, limit=30)
+    reviews = await crud.list_reviews_admin(session, requested_by_tg_id=cb.from_user.id)
     if not reviews:
         await cb.message.edit_text(t("no_data", "Ma'lumot yo'q"), reply_markup=reviews_menu_kb(t))
         return
@@ -538,7 +538,7 @@ async def review_delete_do(cb: CallbackQuery, session):
         await cb.answer(t("admin.not_found", "Not found"), show_alert=True)
     # refresh list
     t = await get_t(session, cb.from_user.id)
-    reviews = await crud.list_reviews_admin(session, requested_by_tg_id=cb.from_user.id, limit=30)
+    reviews = await crud.list_reviews_admin(session, requested_by_tg_id=cb.from_user.id)
     kb = InlineKeyboardBuilder()
     for r in reviews:
         kb.button(text=f"🗑 #{r.id} ⭐{r.rating}", callback_data=f"adm:re:del:{r.id}")
