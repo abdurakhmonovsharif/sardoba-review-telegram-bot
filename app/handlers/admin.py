@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.exc import IntegrityError
-
+from zoneinfo import ZoneInfo
 from app.db import crud
 from app.i18n import I18N
 from app.config import settings
@@ -430,13 +430,14 @@ async def reviews_list(cb: CallbackQuery, session):
         name = " ".join(filter(None, [user.first_name, user.last_name])) if user else "-"
         phone = user.phone if user and user.phone else "-"
         tg_link = f"<a href='tg://user?id={user.tg_id}'>{name or 'User'}</a>" if user else "-"
-
+         # Vaqtni Toshkent vaqt zonasiga o'zgartirish
+        localtime = r.created_at.astimezone(ZoneInfo("Asia/Tashkent"))
         caption = (
             f"#{r.id} | ⭐ {r.rating}\n"
             f"👤 {tg_link} | 📱 {phone}\n"
             f"🏢 {branch.name if branch else '-'}\n"
             f"💬 {r.text or '-'}\n"
-            f"🕒 {r.created_at.strftime('%Y-%m-%d %H:%M')}"
+            f"🕒 {localtime.strftime('%Y-%m-%d %H:%M')}"
         )
 
         if r.photo_file_id:

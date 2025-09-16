@@ -1,10 +1,11 @@
 from aiogram import Bot
 from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.models import User, Branch, Review, Admin
+from app.db.models import User, Branch, Review, Admin, ReviewPhoto
+from aiogram.types import InputMediaPhoto
 from app.config import settings
 from sqlalchemy.orm import joinedload
-
+from zoneinfo import ZoneInfo
 async def get_review_with_relations(session: AsyncSession, review_id: int) -> Review | None:
     q = await session.execute(
         select(Review)
@@ -40,26 +41,37 @@ async def create_review(
     branch_id: int,
     rating: int | None,
     text: str | None,
-    photo_file_id: str | None
+    photos: list[str] | None
 ) -> Review:
+    # 1. Review obyektini yaratish
     r = Review(
         user_id=user_id,
         branch_id=branch_id,
         rating=rating,
         text=text,
-        photo_file_id=photo_file_id
     )
     session.add(r)
-    await session.commit()
-    await session.refresh(r)
+    await session.flush()  # id olish uchun
 
-    # Eager load with relations (user, branch)
+    # 2. Photo qo‘shish (commitdan oldin!)
+    if photos:
+        for file_id in photos:
+            session.add(ReviewPhoto(review_id=r.id, file_id=file_id))
+
+    # 3. Commit
+    await session.commit()
+
+    # 4. Review ni qayta olish (user, branch, photos bilan)
     q = await session.execute(
         select(Review)
-        .options(joinedload(Review.user), joinedload(Review.branch))
+        .options(
+            joinedload(Review.user),
+            joinedload(Review.branch),
+            joinedload(Review.photos)
+        )
         .where(Review.id == r.id)
     )
-    return q.scalar_one()
+    return q.unique().scalar_one()   # 👈 muammoni hal qiladi
 
 async def is_super_admin(session: AsyncSession, tg_id: int) -> bool:
     q = await session.execute(select(Admin).where(Admin.tg_id == tg_id, Admin.role == 'super_admin'))
@@ -311,21 +323,26 @@ async def set_admin_group(session: AsyncSession, tg_id: int, group_id: int):
     await session.refresh(admin)
     return admin
 
-async def notify_superadmin_group(bot: Bot, session: AsyncSession, super_admin_id: int, review):
+async def notify_superadmin_group(bot: Bot, session: AsyncSession, super_admin_id: int, review: Review):
     """Yangi sharh haqida superadmin guruhiga xabar yuborish"""
 
     # Guruh ID ni olish
     group_id = await get_admin_group(session, super_admin_id)
     if not group_id:
-        return  # Agar superadmin uchun group_id yo‘q bo‘lsa, chiqib ketadi
+        print("[notify_superadmin_group] ⚠️ Superadmin uchun group_id topilmadi")
+        return
 
-    # User va Branch ma'lumotlarini oldindan yuklab kelish
+    # Review ni barcha relation’lari bilan qayta yuklab olish
     review = await get_review_with_relations(session, review.id)
     if not review:
+        print(f"[notify_superadmin_group] ⚠️ Review id={review.id} topilmadi")
         return
 
     user = review.user
     branch = review.branch
+
+    # Vaqtni Toshkent TZ ga o‘tkazish
+    localtime = review.created_at.astimezone(ZoneInfo("Asia/Tashkent"))
 
     # User haqida ma'lumot
     name = " ".join(filter(None, [user.first_name, user.last_name])) if user else "-"
@@ -339,22 +356,36 @@ async def notify_superadmin_group(bot: Bot, session: AsyncSession, super_admin_i
         f"👤 {tg_link} | 📱 {phone}\n"
         f"🏢 {branch.name if branch else '-'}\n"
         f"💬 {review.text or '-'}\n"
-        f"🕒 {review.created_at.strftime('%Y-%m-%d %H:%M')}"
+        f"🕒 {localtime.strftime('%Y-%m-%d %H:%M')}"
     )
 
+    photos = [p.file_id for p in (review.photos or [])]
+
     try:
-        if review.photo_file_id:
-            await bot.send_photo(
-                chat_id=group_id,
-                photo=review.photo_file_id,
-                caption=caption,
-                parse_mode="HTML"
-            )
-        else:
+        if not photos:
+            # faqat text
             await bot.send_message(
                 chat_id=group_id,
                 text=caption,
                 parse_mode="HTML"
             )
+        elif len(photos) == 1:
+            # bitta rasm
+            await bot.send_photo(
+                chat_id=group_id,
+                photo=photos[0],
+                caption=caption,
+                parse_mode="HTML"
+            )
+        else:
+            # ko‘p rasm → media group
+            media = []
+            for idx, file_id in enumerate(photos):
+                if idx == 0:
+                    media.append(InputMediaPhoto(media=file_id, caption=caption, parse_mode="HTML"))
+                else:
+                    media.append(InputMediaPhoto(media=file_id))
+            await bot.send_media_group(chat_id=group_id, media=media)
+
     except Exception as e:
-        print(f"[notify_superadmin_group] Guruhga yuborishda xatolik: {e}")
+        print(f"[notify_superadmin_group] ❌ Guruhga yuborishda xatolik: {e}")
