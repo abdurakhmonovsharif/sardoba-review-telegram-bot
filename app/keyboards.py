@@ -66,10 +66,11 @@ def remove_reply_kb():
 
 
 def new_review_kb(t: Callable[[str, str], str]):
-    """Reply keyboard with a single localized command button to start a new review."""
+    """Reply keyboard with localized labels: New Review, Change Language."""
     kb = ReplyKeyboardBuilder()
-    # Localized slash command text
-    label = t("cmd.new_review_button", "/yangi_sharh")
-    kb.add(KeyboardButton(text=label))
-    kb.adjust(1)
-    return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
+    label_new = t("kb.new_review", "🆕 Yangi sharh")
+    label_lang = t("kb.change_lang", "🌐 Tilni o'zgartirish")
+    kb.add(KeyboardButton(text=label_new))
+    kb.add(KeyboardButton(text=label_lang))
+    kb.adjust(2)
+    return kb.as_markup(resize_keyboard=True)

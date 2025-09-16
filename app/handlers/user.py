@@ -183,6 +183,52 @@ async def submit_review(cb: CallbackQuery, state: FSMContext, session):
         reply_markup=new_review_kb(t),
     )
 
+def _labels_new_review() -> set[str]:
+    return {
+        I18N("uz").t("kb.new_review", "🆕 Yangi sharh"),
+        I18N("ru").t("kb.new_review", "🆕 Новый отзыв"),
+    }
+
+
+def _labels_change_lang() -> set[str]:
+    return {
+        I18N("uz").t("kb.change_lang", "🌐 Tilni o'zgartirish"),
+        I18N("ru").t("kb.change_lang", "🌐 Изменить язык"),
+    }
+
+
+async def _start_new_review_flow(msg: Message, state: FSMContext, session):
+    t = await get_t(session, msg.from_user.id)
+    await state.clear()
+    branches = await crud.list_branches(session)
+    if not branches:
+        await msg.answer(t("branch.empty", "Hozircha filiallar ro‘yxati mavjud emas."))
+        return
+    await msg.answer(t("ask.branch", "Filialni tanlang:"), reply_markup=branches_kb(branches))
+    await state.set_state(ReviewForm.branch)
+
+
+@router.message(F.text.in_(_labels_new_review()))
+async def on_new_review_label(msg: Message, state: FSMContext, session):
+    await _start_new_review_flow(msg, state, session)
+
+
+@router.message(F.text.in_(_labels_change_lang()))
+async def on_change_lang_label(msg: Message, state: FSMContext, session):
+    t = await get_t(session, msg.from_user.id)
+    await msg.answer(t("start.choose_lang", "Tilni tanlang / Выберите язык"), reply_markup=lang_kb(t))
+
+
+# Keep slash commands for compatibility
+@router.message(F.text == "/yangi_sharh")
+async def new_review_uz(msg: Message, state: FSMContext, session):
+    await _start_new_review_flow(msg, state, session)
+
+
+@router.message(F.text == "/novyy_otzyv")
+async def new_review_ru(msg: Message, state: FSMContext, session):
+    await _start_new_review_flow(msg, state, session)
+
 # Back from rating to review menu
 @router.callback_query(F.data == "go_back_choose_review")
 async def go_back_choose_review(cb: CallbackQuery, state: FSMContext, session):
