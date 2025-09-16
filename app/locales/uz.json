@@ -79,6 +79,8 @@
 	"admin.kb.reviews.edit": "✏️ Sharhni tahrirlash",
 	"admin.kb.reviews.delete": "🗑 Sharhni o‘chirish",
 	"admin.kb.reviews.stats": "📊 Sharhlar statistikasi",
+	"admin.kb.admins.add": "➕ Admin qo‘shish",
+	"admin.kb.admins.remove": "🗑 Adminni o‘chirish",
 	"admin.reviews.edit.prompt": "Yuboring: reyting|matn (ikkalasidan biri mumkin)",
 	"admin.updated": "Yangilandi ✅",
 	"admin.deleted": "O‘chirildi",

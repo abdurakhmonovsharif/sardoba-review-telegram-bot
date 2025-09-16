@@ -66,6 +66,37 @@ async def add_admin(session: AsyncSession, tg_id: int, role: str = 'admin') -> A
     await session.refresh(a)
     return a
 
+
+# =============== Admin CRUD (super admin only) ===============
+
+async def get_admin_by_tg_id(session: AsyncSession, tg_id: int) -> Admin | None:
+    q = await session.execute(select(Admin).where(Admin.tg_id == tg_id))
+    return q.scalar_one_or_none()
+
+
+async def list_admins(session: AsyncSession, requested_by_tg_id: int) -> list[Admin]:
+    # Only super admin from env allowed to list admins
+    if requested_by_tg_id not in settings.SUPER_ADMINS:
+        raise PermissionError("Only super admin can list admins")
+    q = await session.execute(select(Admin).order_by(Admin.role.desc(), Admin.id))
+    return list(q.scalars().all())
+
+
+async def remove_admin(session: AsyncSession, requested_by_tg_id: int, tg_id: int) -> bool:
+    # Only super admin from env allowed to remove admins
+    if requested_by_tg_id not in settings.SUPER_ADMINS:
+        raise PermissionError("Only super admin can remove admins")
+    # Do not allow removing env super admin
+    if tg_id in settings.SUPER_ADMINS:
+        return False
+    q = await session.execute(select(Admin).where(Admin.tg_id == tg_id))
+    a = q.scalar_one_or_none()
+    if a is None:
+        return False
+    await session.delete(a)
+    await session.commit()
+    return True
+
 async def branch_stats(session: AsyncSession):
     q = await session.execute(
         select(

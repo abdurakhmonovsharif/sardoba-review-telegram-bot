@@ -3,6 +3,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from sqlalchemy.exc import IntegrityError
 
 from app.db import crud
 from app.i18n import I18N
@@ -16,6 +17,8 @@ class AdminStates(StatesGroup):
     br_add = State()
     br_edit = State()  # expects text for selected branch
     rev_edit = State()  # expects text for selected review
+    sa_add_admin = State()  # super admin: add admin by tg_id
+    sa_remove_admin = State()  # super admin: remove admin by tg_id
 
 
 # --- Helpers ---
@@ -29,6 +32,10 @@ async def is_admin(session, tg_id: int) -> bool:
     if tg_id in settings.SUPER_ADMINS:
         return True
     return await crud.is_admin(session, tg_id)
+
+
+def is_super_admin_env(tg_id: int) -> bool:
+    return tg_id in settings.SUPER_ADMINS
 
 
 def admin_main_kb(t):
@@ -76,6 +83,16 @@ def reviews_menu_kb(t):
     return kb.as_markup()
 
 
+def sa_menu_kb(t):
+    kb = InlineKeyboardBuilder()
+    kb.button(text=t("admin.kb.admins", "🛡 Administratorlar"), callback_data="sa:list")
+    kb.button(text=t("admin.kb.admins.add", "➕ Admin qo‘shish"), callback_data="sa:add")
+    kb.button(text=t("admin.kb.admins.remove", "🗑 Adminni o‘chirish"), callback_data="sa:remove")
+    kb.button(text=t("common.kb.back", "⬅ Orqaga"), callback_data="adm:back")
+    kb.adjust(1)
+    return kb.as_markup()
+
+
 # --- Entry ---
 @router.message(F.text == "/admin_sardoba")
 async def admin_panel(msg: Message, session):
@@ -85,6 +102,93 @@ async def admin_panel(msg: Message, session):
         return
     t = await get_t(session, msg.from_user.id)
     await msg.answer(t("admin.menu.title", "⚙️ Admin Panel"), reply_markup=admin_main_kb(t))
+
+
+# --- Super Admin ---
+@router.message(F.text == "/super_admin")
+async def super_admin_panel(msg: Message, session):
+    if not is_super_admin_env(msg.from_user.id):
+        t = I18N("uz").t
+        await msg.answer(t("admin.not_superadmin", "Siz super admin emassiz."))
+        return
+    t = await get_t(session, msg.from_user.id)
+    await msg.answer(t("admin.super.panel", "Super Admin Panel"), reply_markup=sa_menu_kb(t))
+
+
+@router.callback_query(F.data == "sa:add")
+async def sa_add_admin_ask(cb: CallbackQuery, state: FSMContext, session):
+    if not is_super_admin_env(cb.from_user.id):
+        return
+    t = await get_t(session, cb.from_user.id)
+    await state.set_state(AdminStates.sa_add_admin)
+    await cb.message.edit_text(t("admin.admins.add.prompt", "Yozing: TG_ID | role(admin/super_admin) (ixt.)"))
+
+
+@router.message(AdminStates.sa_add_admin)
+async def sa_add_admin_do(msg: Message, state: FSMContext, session):
+    if not is_super_admin_env(msg.from_user.id):
+        await state.clear()
+        return
+    t = await get_t(session, msg.from_user.id)
+    raw = (msg.text or "").strip()
+    # Extract first number (tg_id)
+    try:
+        tg_id = int(raw.split()[0].replace("@", ""))
+    except Exception:
+        await msg.answer(t("error", "Xatolik yuz berdi. Qayta urinib ko‘ring."))
+        return
+    try:
+        await crud.add_admin(session, tg_id=tg_id, role='admin')
+        await msg.answer(t("admin.admins.add.success", "Admin qo‘shildi."))
+    except IntegrityError:
+        await msg.answer(t("admin.updated", "Updated ✅"))
+    await state.clear()
+    await msg.answer(t("admin.super.panel", "Super Admin Panel"), reply_markup=sa_menu_kb(t))
+
+
+@router.callback_query(F.data == "sa:list")
+async def sa_list_admins(cb: CallbackQuery, session):
+    if not is_super_admin_env(cb.from_user.id):
+        return
+    t = await get_t(session, cb.from_user.id)
+    admins = await crud.list_admins(session, requested_by_tg_id=cb.from_user.id)
+    if not admins:
+        await cb.message.edit_text(t("no_data", "Ma'lumot yo'q"), reply_markup=sa_menu_kb(t))
+        return
+    lines = [t("admin.admins.title", "🛡 Administratorlar")]
+    for a in admins:
+        lines.append(f"• tg:{a.tg_id} | role:{a.role}")
+    await cb.message.edit_text("\n".join(lines), reply_markup=sa_menu_kb(t))
+
+
+@router.callback_query(F.data == "sa:remove")
+async def sa_remove_admin_ask(cb: CallbackQuery, state: FSMContext, session):
+    if not is_super_admin_env(cb.from_user.id):
+        return
+    t = await get_t(session, cb.from_user.id)
+    await state.set_state(AdminStates.sa_remove_admin)
+    await cb.message.edit_text(t("admin.admins.remove.prompt", "Yozing: TG_ID"))
+
+
+@router.message(AdminStates.sa_remove_admin)
+async def sa_remove_admin_do(msg: Message, state: FSMContext, session):
+    if not is_super_admin_env(msg.from_user.id):
+        await state.clear()
+        return
+    t = await get_t(session, msg.from_user.id)
+    raw = (msg.text or "").strip()
+    try:
+        target = int(raw.split()[0].replace("@", ""))
+    except Exception:
+        await msg.answer(t("error", "Xatolik yuz berdi. Qayta urinib ko‘ring."))
+        return
+    ok = await crud.remove_admin(session, requested_by_tg_id=msg.from_user.id, tg_id=target)
+    if not ok:
+        await msg.answer(t("admin.admins.remove.not_found", "Bunday admin topilmadi."))
+    else:
+        await msg.answer(t("admin.admins.remove.success", "Admin olib tashlandi."))
+    await state.clear()
+    await msg.answer(t("admin.super.panel", "Super Admin Panel"), reply_markup=sa_menu_kb(t))
 
 
 @router.callback_query(F.data == "adm:back")
