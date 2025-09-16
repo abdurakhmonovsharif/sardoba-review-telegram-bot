@@ -55,11 +55,8 @@ async def main():
 
     from app.i18n import I18N
     t_uz = I18N("uz").t
-    t_ru = I18N("ru").t
     await bot.set_my_commands([
         BotCommand(command="start", description=t_uz("cmd.start", "Boshlash")),
-        BotCommand(command="new_review", description=t_uz("cmd.new_review", "Yangi sharh")),
-        BotCommand(command="new_review", description=t_ru("cmd.new_review", "Новый отзыв")),
         ])
 
     async with engine.begin() as conn:

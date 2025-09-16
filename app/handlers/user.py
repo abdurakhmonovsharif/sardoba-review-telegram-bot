@@ -166,7 +166,7 @@ async def submit_review(cb: CallbackQuery, state: FSMContext, session):
     if user is None:
         user = await crud.upsert_user(session, cb.from_user.id, first_name=cb.from_user.first_name)
 
-    await crud.create_review(
+    review = await crud.create_review(
         session,
         user_id=user.id,
         branch_id=data["branch_id"],
@@ -177,6 +177,8 @@ async def submit_review(cb: CallbackQuery, state: FSMContext, session):
     await state.clear()
     await cb.message.delete()
     await cb.message.answer(t("saved", "Rahmat! Sharhingiz saqlandi 🙏"))
+    # Notify group
+    await crud.notify_new_review(session, review, bot=cb.bot)
     # Offer to start a new review with a localized command button
     await cb.message.answer(
         t("ask.new_review", "Yangi sharh boshlash uchun tugmani bosing."),
