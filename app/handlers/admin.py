@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from app.db import crud
 from app.i18n import I18N
 from app.config import settings
-
+from aiogram.types import InputMediaPhoto
 router = Router()
 
 
@@ -420,42 +420,47 @@ async def reviews_list(cb: CallbackQuery, session):
         await cb.message.edit_text(t("no_data", "Ma'lumot yo'q"), reply_markup=reviews_menu_kb(t))
         return
 
-    await cb.message.delete()  # clear previous message
+    await cb.message.delete()  # oldingi menyuni tozalash
 
     for r in reviews:
         user = r.user
         branch = r.branch
 
-        # Build user info
+        # User haqida
         name = " ".join(filter(None, [user.first_name, user.last_name])) if user else "-"
         phone = user.phone if user and user.phone else "-"
         tg_link = f"<a href='tg://user?id={user.tg_id}'>{name or 'User'}</a>" if user else "-"
-         # Vaqtni Toshkent vaqt zonasiga o'zgartirish
+
+        # Vaqt
         localtime = r.created_at.astimezone(ZoneInfo("Asia/Tashkent"))
+
         caption = (
-            f"#{r.id} | ⭐ {r.rating}\n"
+            f"#{r.id} | ⭐ {r.rating or '-'}\n"
             f"👤 {tg_link} | 📱 {phone}\n"
-            f"🏢 {branch.name if branch else '-'}\n"
+            f"📍 {branch.name if branch else '-'}\n"
             f"💬 {r.text or '-'}\n"
             f"🕒 {localtime.strftime('%Y-%m-%d %H:%M')}"
         )
 
-        if r.photo_file_id:
-            await cb.message.answer_photo(
-                photo=r.photo_file_id,
-                caption=caption,
-                parse_mode="HTML"
-            )
+        photos = [p.file_id for p in (r.photos or [])]
+
+        if photos:
+            media = []
+            for idx, fid in enumerate(photos):
+                if idx == 0:
+                    media.append(InputMediaPhoto(media=fid, caption=caption, parse_mode="HTML"))
+                else:
+                    media.append(InputMediaPhoto(media=fid))
+            await cb.message.answer_media_group(media)
         else:
             await cb.message.answer(caption, parse_mode="HTML")
 
-    # Resend menu at the end
+    # menyuni qayta chiqarish
     await cb.message.answer(
         t("admin.reviews.title", "📝 Sharhlar"),
         reply_markup=reviews_menu_kb(t)
     )
-
-
+    
 @router.callback_query(F.data.startswith("adm:re:edit:"))
 async def review_edit_start(cb: CallbackQuery, state: FSMContext, session):
     if not await is_admin(session, cb.from_user.id):

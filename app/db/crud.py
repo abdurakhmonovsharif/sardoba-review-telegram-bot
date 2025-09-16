@@ -354,7 +354,7 @@ async def notify_superadmin_group(bot: Bot, session: AsyncSession, super_admin_i
         f"🆕 Yangi sharh!\n"
         f"#{review.id} | ⭐ {review.rating or '-'}\n"
         f"👤 {tg_link} | 📱 {phone}\n"
-        f"🏢 {branch.name if branch else '-'}\n"
+        f"📍 {branch.name if branch else '-'}\n"
         f"💬 {review.text or '-'}\n"
         f"🕒 {localtime.strftime('%Y-%m-%d %H:%M')}"
     )
