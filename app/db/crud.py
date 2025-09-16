@@ -231,21 +231,29 @@ async def list_users_admin(
     return list(q.scalars().all())
 
 
+from sqlalchemy import select
+from sqlalchemy.orm import joinedload
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.models import Review
+
 async def list_reviews_admin(
     session: AsyncSession,
     requested_by_tg_id: int,
-    limit: int = 50,
-    offset: int = 0,
 ) -> list[Review]:
     await _ensure_admin(session, requested_by_tg_id)
-    q = await session.execute(
-        select(Review).options(
+
+    q = (
+        select(Review)
+        .options(
             joinedload(Review.user),
-            joinedload(Review.photos),
-            joinedload(Review.branch)
-            ).order_by(Review.id.desc()).offset(offset).limit(limit)
+            joinedload(Review.branch),
+            joinedload(Review.photos),  
+        )
+        .order_by(Review.id.desc())
     )
-    return list(q.scalars().all())
+    res = await session.execute(q)
+    return res.unique().scalars().all()  
 
 
 async def get_review(session: AsyncSession, review_id: int) -> Review | None:
