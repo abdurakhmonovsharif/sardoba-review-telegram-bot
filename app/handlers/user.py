@@ -3,6 +3,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from app.db import crud
+from config import settings
 from app.i18n import I18N
 from app.keyboards import (
     branches_kb,
@@ -178,7 +179,7 @@ async def submit_review(cb: CallbackQuery, state: FSMContext, session):
     await cb.message.delete()
     await cb.message.answer(t("saved", "Rahmat! Sharhingiz saqlandi 🙏"))
     # Notify group
-    await crud.notify_new_review(session, review, bot=cb.bot)
+    await crud.notify_superadmin_group(session, review, settings.SUPER_ADMINS[0],bot=cb.bot)
     # Offer to start a new review with a localized command button
     await cb.message.answer(
         t("ask.new_review", "Yangi sharh boshlash uchun tugmani bosing."),
