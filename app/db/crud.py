@@ -1,4 +1,4 @@
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import User, Branch, Review, Admin
 from app.config import settings
@@ -239,6 +239,9 @@ async def get_admin_group(session: AsyncSession, super_admin_id: int) -> int | N
     Super admin uchun bog‘langan guruh ID sini qaytaradi.
     Agar topilmasa, None qaytaradi.
     """
+    # Ensure column exists (idempotent)
+    await session.execute(text("ALTER TABLE admins ADD COLUMN IF NOT EXISTS group_id BIGINT"))
+    await session.commit()
     q = await session.execute(
         select(Admin.group_id).where(Admin.tg_id == super_admin_id)
     )
@@ -250,6 +253,10 @@ async def set_admin_group(session: AsyncSession, tg_id: int, group_id: int):
     # faqat SUPER_ADMINS ro'yxatidagi foydalanuvchilar o'zgartira oladi
     if tg_id not in settings.SUPER_ADMINS:
         raise ValueError("Not a superadmin")
+
+    # Ensure column exists (idempotent)
+    await session.execute(text("ALTER TABLE admins ADD COLUMN IF NOT EXISTS group_id BIGINT"))
+    await session.commit()
 
     q = await session.execute(select(Admin).where(Admin.tg_id == tg_id))
     admin = q.scalar_one_or_none()
