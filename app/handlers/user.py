@@ -47,15 +47,23 @@ async def start_cmd(msg: Message, state: FSMContext, session):
 async def choose_lang(cb: CallbackQuery, state: FSMContext, session):
     locale = cb.data.split(":")[1]
     await crud.upsert_user(session, cb.from_user.id, locale=locale)
-    await state.update_data(locale=locale)
     t = I18N(locale).t
+
+    user = await crud.get_user_by_tg_id(session, cb.from_user.id)
+
+    # Agar telefon allaqachon bor bo‘lsa – faqat tilni almashtirish
+    if user and user.phone:
+        await cb.message.answer(t("lang.changed", "✅ Til o‘zgartirildi"),reply_markup=new_review_kb(t))
+        await cb.message.delete()
+        return
+
+    # Yangi foydalanuvchi bo‘lsa → to‘liq start oqimi
     await cb.message.edit_text(t("start.hello", "Assalomu alaykum! Xush kelibsiz."))
     await cb.message.answer(
         t("ask.phone", "📞 Telefon raqamingizni yuboring:"),
         reply_markup=contact_kb(t),
     )
     await state.set_state(ReviewForm.phone)
-
 
 # 📞 Telefon olish
 @router.message(ReviewForm.phone, F.contact)
