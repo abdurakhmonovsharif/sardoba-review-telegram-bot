@@ -10,8 +10,8 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS branches (
   id BIGSERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  address TEXT,
+  nameuz TEXT NOT NULL,
+  nameru TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 

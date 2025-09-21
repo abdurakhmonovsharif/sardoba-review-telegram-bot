@@ -32,7 +32,7 @@ async def get_user_by_tg_id(session: AsyncSession, tg_id: int) -> User | None:
     return q.scalar_one_or_none()
 
 async def list_branches(session: AsyncSession) -> list[Branch]:
-    q = await session.execute(select(Branch).order_by(Branch.name))
+    q = await session.execute(select(Branch).order_by(Branch.nameuz, Branch.id))
     return list(q.scalars().all())
 
 async def create_review(
@@ -123,21 +123,31 @@ async def branch_stats(session: AsyncSession):
     q = await session.execute(
         select(
             Branch.id,
-            Branch.name,
+            Branch.nameuz,
+            Branch.nameru,
             func.count(Review.id),
             func.round(func.avg(Review.rating), 2)
-        ).join(Review, Review.branch_id == Branch.id, isouter=True)
-         .group_by(Branch.id)
-         .order_by(Branch.name)
+        )
+        .join(Review, Review.branch_id == Branch.id, isouter=True)
+        .group_by(Branch.id)
+        .order_by(Branch.nameuz, Branch.id)
     )
-    return [
-        {
-            "branch_id": r[0],
-            "name": r[1],
-            "reviews_count": int(r[2] or 0),
-            "avg_rating": float(r[3] or 0)
-        } for r in q.all()
-    ]
+    stats = []
+    for branch_id, nameuz, nameru, reviews_count, avg_rating in q.all():
+        display_name = nameuz or nameru or str(branch_id)
+        if nameuz and nameru and nameuz != nameru:
+            display_name = f"{nameuz} / {nameru}"
+        stats.append(
+            {
+                "branch_id": branch_id,
+                "nameuz": nameuz,
+                "nameru": nameru,
+                "display_name": display_name,
+                "reviews_count": int(reviews_count or 0),
+                "avg_rating": float(avg_rating or 0),
+            }
+        )
+    return stats
 
 # =============== Branch CRUD (admin only) ===============
 
@@ -158,11 +168,11 @@ async def get_branch(session: AsyncSession, branch_id: int) -> Branch | None:
 async def create_branch_admin(
     session: AsyncSession,
     requested_by_tg_id: int,
-    name: str,
-    address: str | None = None,
+    nameuz: str,
+    nameru: str,
 ) -> Branch:
     await _ensure_admin(session, requested_by_tg_id)
-    b = Branch(name=name, address=address)
+    b = Branch(nameuz=nameuz, nameru=nameru)
     session.add(b)
     await session.commit()
     await session.refresh(b)
@@ -173,18 +183,18 @@ async def update_branch_admin(
     session: AsyncSession,
     requested_by_tg_id: int,
     branch_id: int,
-    name: str | None = None,
-    address: str | None = None,
+    nameuz: str | None = None,
+    nameru: str | None = None,
 ) -> Branch:
     await _ensure_admin(session, requested_by_tg_id)
     q = await session.execute(select(Branch).where(Branch.id == branch_id))
     b = q.scalar_one_or_none()
     if b is None:
         raise ValueError("Branch not found")
-    if name is not None:
-        b.name = name
-    if address is not None:
-        b.address = address
+    if nameuz is not None:
+        b.nameuz = nameuz
+    if nameru is not None:
+        b.nameru = nameru
     await session.commit()
     await session.refresh(b)
     return b
@@ -261,27 +271,6 @@ async def get_review(session: AsyncSession, review_id: int) -> Review | None:
     return q.scalar_one_or_none()
 
 
-async def update_review_admin(
-    session: AsyncSession,
-    requested_by_tg_id: int,
-    review_id: int,
-    rating: int | None = None,
-    text: str | None = None,
-) -> Review:
-    await _ensure_admin(session, requested_by_tg_id)
-    q = await session.execute(select(Review).where(Review.id == review_id))
-    r = q.scalar_one_or_none()
-    if r is None:
-        raise ValueError("Review not found")
-    if rating is not None:
-        r.rating = rating
-    if text is not None:
-        r.text = text
-    await session.commit()
-    await session.refresh(r)
-    return r
-
-
 async def delete_review_admin(
     session: AsyncSession,
     requested_by_tg_id: int,
@@ -349,6 +338,12 @@ async def notify_superadmin_group(bot: Bot, session: AsyncSession, super_admin_i
 
     user = review.user
     branch = review.branch
+    if branch:
+        branch_name = branch.nameuz or branch.nameru or "-"
+        if branch.nameuz and branch.nameru and branch.nameuz != branch.nameru:
+            branch_name = f"{branch.nameuz} / {branch.nameru}"
+    else:
+        branch_name = "-"
 
     # Vaqtni Toshkent TZ ga o‘tkazish
     localtime = review.created_at.astimezone(ZoneInfo("Asia/Tashkent"))
@@ -363,7 +358,7 @@ async def notify_superadmin_group(bot: Bot, session: AsyncSession, super_admin_i
         f"🆕 Yangi sharh!\n"
         f"#{review.id} | ⭐ {review.rating or '-'}\n"
         f"👤 {tg_link} | 📱 {phone}\n"
-        f"📍 {branch.name if branch else '-'}\n"
+        f"📍 {branch_name}\n"
         f"💬 {review.text or '-'}\n"
         f"🕒 {localtime.strftime('%Y-%m-%d %H:%M')}"
     )

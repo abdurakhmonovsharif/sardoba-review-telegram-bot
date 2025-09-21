@@ -70,6 +70,7 @@ async def choose_lang(cb: CallbackQuery, state: FSMContext, session):
 async def on_phone_contact(msg: Message, state: FSMContext, session):
     await crud.upsert_user(session, msg.from_user.id, phone=msg.contact.phone_number)
     t = await get_t(session, msg.from_user.id)
+    locale = getattr(getattr(t, "__self__", None), "locale", "uz")
     await msg.answer(t("thank_you", "Rahmat ✅"), reply_markup=ReplyKeyboardRemove())
 
     branches = await crud.list_branches(session)
@@ -78,7 +79,10 @@ async def on_phone_contact(msg: Message, state: FSMContext, session):
         await state.clear()
         return
 
-    await msg.answer(t("ask.branch", "Filialni tanlang:"), reply_markup=branches_kb(branches))
+    await msg.answer(
+        t("ask.branch", "Filialni tanlang:"),
+        reply_markup=branches_kb(branches, locale=locale),
+    )
     await state.set_state(ReviewForm.branch)
 
 
@@ -264,7 +268,11 @@ async def _start_new_review_flow(msg: Message, state: FSMContext, session):
     if not branches:
         await msg.answer(t("branch.empty", "Hozircha filiallar yo‘q."))
         return
-    await msg.answer(t("ask.branch", "Filialni tanlang:"), reply_markup=branches_kb(branches))
+    locale = getattr(getattr(t, "__self__", None), "locale", "uz")
+    await msg.answer(
+        t("ask.branch", "Filialni tanlang:"),
+        reply_markup=branches_kb(branches, locale=locale),
+    )
     await state.set_state(ReviewForm.branch)
 
 

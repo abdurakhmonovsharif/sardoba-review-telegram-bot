@@ -20,10 +20,15 @@ def contact_kb(t: Callable[[str, str], str]):
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
-def branches_kb(branches: list):
+def branches_kb(branches: list, locale: str = "uz"):
     kb = InlineKeyboardBuilder()
     for b in branches:
-        kb.button(text=b.name, callback_data=f"branch:{b.id}")
+        if locale == "ru":
+            label = b.nameru or b.nameuz
+        else:
+            label = b.nameuz or b.nameru
+        label = label or f"#{b.id}"
+        kb.button(text=label, callback_data=f"branch:{b.id}")
     kb.adjust(1)
     return kb.as_markup()
 

@@ -14,9 +14,10 @@ router = Router()
 
 # --- States ---
 class AdminStates(StatesGroup):
-    br_add = State()
-    br_edit = State()  # expects text for selected branch
-    rev_edit = State()  # expects text for selected review
+    br_add_name_uz = State()
+    br_add_name_ru = State()
+    br_edit_name_uz = State()
+    br_edit_name_ru = State()
     sa_add_admin = State()  # super admin: add admin by tg_id
     sa_remove_admin = State()  # super admin: remove admin by tg_id
 
@@ -26,6 +27,140 @@ async def get_t(session, tg_id: int):
     user = await crud.get_user_by_tg_id(session, tg_id)
     locale = user.locale if user and user.locale else "uz"
     return I18N(locale).t
+
+
+def branch_label(branch) -> str:
+    """Return a combined branch title for admin-facing keyboards."""
+    if branch.nameuz and branch.nameru and branch.nameuz != branch.nameru:
+        return f"{branch.nameuz} / {branch.nameru}"
+    return branch.nameuz or branch.nameru or f"#{branch.id}"
+
+
+def edit_skip_kb(t, field: str):
+    kb = InlineKeyboardBuilder()
+    kb.button(text=t("admin.btn.skip", "O‘tkazib yuborish"), callback_data=f"adm:br:skip:{field}")
+    kb.button(text=t("common.kb.back", "⬅ Orqaga"), callback_data="adm:br")
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+EDIT_PROMPTS = {
+    "nameuz": (
+        "admin.branch.edit.ask_name_uz",
+        "Filialning yangi o‘zbekcha nomini kiriting:",
+    ),
+    "nameru": (
+        "admin.branch.edit.ask_name_ru",
+        "Введите новое название филиала на русском:",
+    ),
+}
+
+
+FIELD_ORDER = [
+    ("nameuz", AdminStates.br_edit_name_uz),
+    ("nameru", AdminStates.br_edit_name_ru),
+]
+
+
+FIELD_TO_STATE = dict(FIELD_ORDER)
+
+
+FIELD_TO_NEXT = {
+    "nameuz": "nameru",
+    "nameru": None,
+}
+
+
+STATE_TO_FIELD = {
+    AdminStates.br_edit_name_uz.state: "nameuz",
+    AdminStates.br_edit_name_ru.state: "nameru",
+}
+
+
+SKIP_TOKENS = {"-", "—", "skip", "o'tkazish", "otkazish"}
+
+
+async def _prompt_edit_field(target: Message | CallbackQuery, t, field: str):
+    prompt_key, default_text = EDIT_PROMPTS[field]
+    markup = edit_skip_kb(t, field)
+    text = t(prompt_key, default_text)
+    if isinstance(target, CallbackQuery):
+        await target.answer()
+        await target.message.edit_text(text, reply_markup=markup)
+    else:
+        await target.answer(text, reply_markup=markup)
+
+
+def _clean_input(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    value = raw.strip()
+    if not value:
+        return None
+    if value.lower() in SKIP_TOKENS:
+        return None
+    return value
+
+
+async def _finalize_branch_edit(
+    target: Message | CallbackQuery,
+    state: FSMContext,
+    session,
+    admin_id: int,
+    t,
+):
+    data = await state.get_data()
+    branch_id = int(data.get("branch_id"))
+    nameuz = data.get("edit_nameuz")
+    nameru = data.get("edit_nameru")
+
+    if isinstance(target, CallbackQuery):
+        await target.answer()
+        sender = target.message.answer
+    else:
+        sender = target.answer
+
+    if all(value is None for value in (nameuz, nameru)):
+        await state.clear()
+        await sender(t("admin.branch.edit.nothing", "Hech qanday o‘zgarish kiritilmadi."))
+        await sender(t("admin.branches.title", "🏢 Filiallar"), reply_markup=branches_menu_kb(t))
+        return
+
+    try:
+        await crud.update_branch_admin(
+            session,
+            requested_by_tg_id=admin_id,
+            branch_id=branch_id,
+            nameuz=nameuz,
+            nameru=nameru,
+        )
+    except ValueError:
+        await state.clear()
+        await sender(t("admin.branch.edit.not_found", "Bunday ID li filial topilmadi."))
+        await sender(t("admin.branches.title", "🏢 Filiallar"), reply_markup=branches_menu_kb(t))
+        return
+
+    await state.clear()
+    await sender(t("admin.branch.edit.success", "Filial yangilandi."))
+    await sender(t("admin.branches.title", "🏢 Filiallar"), reply_markup=branches_menu_kb(t))
+
+
+async def _advance_edit_flow(
+    target: Message | CallbackQuery,
+    state: FSMContext,
+    session,
+    admin_id: int,
+    t,
+    field: str,
+    value: str | None,
+):
+    await state.update_data(**{f"edit_{field}": value})
+    next_field = FIELD_TO_NEXT[field]
+    if next_field is None:
+        await _finalize_branch_edit(target, state, session, admin_id, t)
+        return
+    await state.set_state(FIELD_TO_STATE[next_field])
+    await _prompt_edit_field(target, t, next_field)
 
 
 async def is_admin(session, tg_id: int) -> bool:
@@ -76,7 +211,6 @@ def users_menu_kb(t):
 def reviews_menu_kb(t):
     kb = InlineKeyboardBuilder()
     kb.button(text=t("admin.kb.reviews.list", "📃 Sharhlar ro‘yxati"), callback_data="adm:re:list")
-    kb.button(text=t("admin.kb.reviews.edit", "✏️ Sharhni tahrirlash"), callback_data="adm:re:edit")
     kb.button(text=t("admin.kb.reviews.delete", "🗑 Sharhni o‘chirish"), callback_data="adm:re:del")
     kb.button(text=t("common.kb.back", "⬅ Orqaga"), callback_data="adm:back")
     kb.adjust(1)
@@ -219,7 +353,9 @@ async def branches_stats(cb: CallbackQuery, session):
         return
     lines = [t("admin.stats.header", "📊 Filial statistikasi")]
     for s in stats:
-        lines.append(f"• {s['name']}: {s['reviews_count']} {t('admin.stats.reviews','sharh')}, ⭐ {s['avg_rating']}")
+        lines.append(
+            f"• {s['display_name']}: {s['reviews_count']} {t('admin.stats.reviews','sharh')}, ⭐ {s['avg_rating']}"
+        )
     await cb.message.edit_text("\n".join(lines), reply_markup=branches_menu_kb(t))
 
 
@@ -228,34 +364,67 @@ async def branch_add_start(cb: CallbackQuery, state: FSMContext, session):
     if not await is_admin(session, cb.from_user.id):
         return
     t = await get_t(session, cb.from_user.id)
-    await state.set_state(AdminStates.br_add)
+    await state.set_state(AdminStates.br_add_name_uz)
     # Remove previous menu, then prompt with a back-only keyboard
     try:
         await cb.message.delete()
     except Exception:
         pass
     await cb.message.answer(
-        t("admin.branch.add.usage", "Foydalanish: Nomi | Manzil(ixtiyoriy)"),
+        t("admin.branch.add.ask_name_uz", "Filialning o‘zbekcha nomini kiriting:"),
         reply_markup=back_to_branches_kb(t)
     )
 
 
-@router.message(AdminStates.br_add)
-async def branch_add_finish(msg: Message, state: FSMContext, session):
+@router.message(AdminStates.br_add_name_uz)
+async def branch_add_name_uz(msg: Message, state: FSMContext, session):
     if not await is_admin(session, msg.from_user.id):
         await state.clear()
         return
     t = await get_t(session, msg.from_user.id)
-    text = msg.text or ""
-    parts = [p.strip() for p in text.split("|", 1)]
-    name = parts[0] if parts and parts[0] else None
-    address = parts[1] if len(parts) > 1 and parts[1] else None
-    if not name:
-        await msg.answer(t("admin.branch.add.usage", "Foydalanish: Nomi | Manzil(ixtiyoriy)"))
+    raw = (msg.text or "").strip()
+    if not raw:
+        await msg.answer(
+            t("admin.branch.add.ask_name_uz", "Filialning o‘zbekcha nomini kiriting:"),
+            reply_markup=back_to_branches_kb(t),
+        )
         return
-    await crud.create_branch_admin(session, requested_by_tg_id=msg.from_user.id, name=name, address=address)
+    await state.update_data(nameuz=raw)
+    await state.set_state(AdminStates.br_add_name_ru)
+    await msg.answer(
+        t("admin.branch.add.ask_name_ru", "Filialning ruscha nomini kiriting:"),
+        reply_markup=back_to_branches_kb(t),
+    )
+
+
+@router.message(AdminStates.br_add_name_ru)
+async def branch_add_name_ru(msg: Message, state: FSMContext, session):
+    if not await is_admin(session, msg.from_user.id):
+        await state.clear()
+        return
+    t = await get_t(session, msg.from_user.id)
+    raw = (msg.text or "").strip()
+    if not raw:
+        await msg.answer(
+            t("admin.branch.add.ask_name_ru", "Filialning ruscha nomini kiriting:"),
+            reply_markup=back_to_branches_kb(t),
+        )
+        return
+    data = await state.get_data()
+    nameuz = data.get("nameuz")
+    if not nameuz:
+        await state.clear()
+        await msg.answer(t("error", "Xatolik yuz berdi. Qayta urinib ko‘ring."))
+        await msg.answer(t("admin.branches.title", "🏢 Filiallar"), reply_markup=branches_menu_kb(t))
+        return
+
+    await crud.create_branch_admin(
+        session,
+        requested_by_tg_id=msg.from_user.id,
+        nameuz=nameuz,
+        nameru=raw,
+    )
     await state.clear()
-    # Inform about success, then show branches menu again
     await msg.answer(t("admin.branch.add.success", "Filial qo‘shildi."))
     await msg.answer(t("admin.branches.title", "🏢 Filiallar"), reply_markup=branches_menu_kb(t))
 
@@ -271,7 +440,7 @@ async def branch_edit_list(cb: CallbackQuery, session):
         return
     kb = InlineKeyboardBuilder()
     for b in branches:
-        kb.button(text=f"✏️ {b.name}", callback_data=f"adm:br:edit:{b.id}")
+        kb.button(text=f"✏️ {branch_label(b)}", callback_data=f"adm:br:edit:{b.id}")
     kb.button(text=t("common.kb.back", "⬅ Orqaga"), callback_data="adm:br")
     kb.adjust(1)
     await cb.message.edit_text(t("admin.kb.branches.edit", "✏️ Filialni tahrirlash"), reply_markup=kb.as_markup())
@@ -283,40 +452,49 @@ async def branch_edit_start(cb: CallbackQuery, state: FSMContext, session):
         return
     t = await get_t(session, cb.from_user.id)
     branch_id = int(cb.data.split(":")[3])
-    await state.update_data(branch_id=branch_id)
-    await state.set_state(AdminStates.br_edit)
-    await cb.message.edit_text(
-        t("admin.branch.edit.usage", "Yozing: ID | Yangi nom(ixt.) | Yangi manzil(ixt.)"),
-        reply_markup=back_to_branches_kb(t),
+    await state.update_data(
+        branch_id=branch_id,
+        edit_nameuz=None,
+        edit_nameru=None,
     )
+    await state.set_state(AdminStates.br_edit_name_uz)
+    await _prompt_edit_field(cb, t, "nameuz")
 
 
-@router.message(AdminStates.br_edit)
-async def branch_edit_finish(msg: Message, state: FSMContext, session):
+@router.message(AdminStates.br_edit_name_uz)
+async def branch_edit_name_uz_input(msg: Message, state: FSMContext, session):
     if not await is_admin(session, msg.from_user.id):
         await state.clear()
         return
     t = await get_t(session, msg.from_user.id)
-    data = await state.get_data()
-    branch_id = int(data.get("branch_id"))
-    raw = msg.text or ""
-    name = None
-    address = None
-    if "|" in raw:
-        parts = [p.strip() for p in raw.split("|", 1)]
-        name = parts[0] or None
-        address = parts[1] or None
-    else:
-        name = raw.strip() or None
-    try:
-        await crud.update_branch_admin(session, requested_by_tg_id=msg.from_user.id, branch_id=branch_id, name=name, address=address)
-    except ValueError:
-        await msg.answer(t("admin.branch.edit.not_found", "Bunday ID li filial topilmadi."))
+    value = _clean_input(msg.text)
+    await _advance_edit_flow(msg, state, session, msg.from_user.id, t, "nameuz", value)
+
+
+@router.message(AdminStates.br_edit_name_ru)
+async def branch_edit_name_ru_input(msg: Message, state: FSMContext, session):
+    if not await is_admin(session, msg.from_user.id):
         await state.clear()
         return
-    await state.clear()
-    await msg.answer(t("admin.branch.edit.success", "Filial yangilandi."))
-    await msg.answer(t("admin.branches.title", "🏢 Filiallar"), reply_markup=branches_menu_kb(t))
+    t = await get_t(session, msg.from_user.id)
+    value = _clean_input(msg.text)
+    await _advance_edit_flow(msg, state, session, msg.from_user.id, t, "nameru", value)
+
+
+@router.callback_query(F.data.startswith("adm:br:skip:"))
+async def branch_edit_skip(cb: CallbackQuery, state: FSMContext, session):
+    if not await is_admin(session, cb.from_user.id):
+        await state.clear()
+        return
+    parts = cb.data.split(":")
+    field = parts[3] if len(parts) > 3 else None
+    current_state = await state.get_state()
+    expected_field = STATE_TO_FIELD.get(current_state)
+    if field is None or expected_field != field:
+        await cb.answer("⏳")
+        return
+    t = await get_t(session, cb.from_user.id)
+    await _advance_edit_flow(cb, state, session, cb.from_user.id, t, field, None)
 
 
 @router.callback_query(F.data == "adm:br:del")
@@ -330,7 +508,7 @@ async def branch_delete_list(cb: CallbackQuery, session):
         return
     kb = InlineKeyboardBuilder()
     for b in branches:
-        kb.button(text=f"🗑 {b.name}", callback_data=f"adm:br:del:{b.id}")
+        kb.button(text=f"🗑 {branch_label(b)}", callback_data=f"adm:br:del:{b.id}")
     kb.button(text=t("common.kb.back", "⬅ Orqaga"), callback_data="adm:br")
     kb.adjust(1)
     await cb.message.edit_text(t("admin.kb.branches.delete", "🗑 Filialni o‘chirish"), reply_markup=kb.as_markup())
@@ -351,7 +529,7 @@ async def branch_delete_do(cb: CallbackQuery, session):
     branches = await crud.list_branches(session)
     kb = InlineKeyboardBuilder()
     for b in branches:
-        kb.button(text=f"🗑 {b.name}", callback_data=f"adm:br:del:{b.id}")
+        kb.button(text=f"🗑 {branch_label(b)}", callback_data=f"adm:br:del:{b.id}")
     kb.button(text=t("common.kb.back", "⬅ Orqaga"), callback_data="adm:br")
     kb.adjust(1)
     await cb.message.edit_text(t("admin.kb.branches.delete", "🗑 Filialni o‘chirish"), reply_markup=kb.as_markup())
@@ -425,6 +603,12 @@ async def reviews_list(cb: CallbackQuery, session):
     for r in reviews:
         user = r.user
         branch = r.branch
+        if branch:
+            branch_name = branch.nameuz or branch.nameru or "-"
+            if branch.nameuz and branch.nameru and branch.nameuz != branch.nameru:
+                branch_name = f"{branch.nameuz} / {branch.nameru}"
+        else:
+            branch_name = "-"
 
         # User haqida
         name = " ".join(filter(None, [user.first_name, user.last_name])) if user else "-"
@@ -437,7 +621,7 @@ async def reviews_list(cb: CallbackQuery, session):
         caption = (
             f"#{r.id} | ⭐ {r.rating or '-'}\n"
             f"👤 {tg_link} | 📱 {phone}\n"
-            f"📍 {branch.name if branch else '-'}\n"
+            f"📍 {branch_name}\n"
             f"💬 {r.text or '-'}\n"
             f"🕒 {localtime.strftime('%Y-%m-%d %H:%M')}"
         )
@@ -460,52 +644,6 @@ async def reviews_list(cb: CallbackQuery, session):
         t("admin.reviews.title", "📝 Sharhlar"),
         reply_markup=reviews_menu_kb(t)
     )
-    
-@router.callback_query(F.data.startswith("adm:re:edit:"))
-async def review_edit_start(cb: CallbackQuery, state: FSMContext, session):
-    if not await is_admin(session, cb.from_user.id):
-        return
-    t = await get_t(session, cb.from_user.id)
-    review_id = int(cb.data.split(":")[3])
-    await state.update_data(review_id=review_id)
-    await state.set_state(AdminStates.rev_edit)
-    await cb.message.edit_text(t("admin.reviews.edit.prompt", "Send: rating|text (either can be omitted)"))
-
-
-@router.message(AdminStates.rev_edit)
-async def review_edit_finish(msg: Message, state: FSMContext, session):
-    if not await is_admin(session, msg.from_user.id):
-        await state.clear()
-        return
-    data = await state.get_data()
-    review_id = int(data.get("review_id"))
-    raw = (msg.text or "").strip()
-    rating: int | None = None
-    text: str | None = None
-    if "|" in raw:
-        left, right = [p.strip() for p in raw.split("|", 1)]
-        if left.isdigit():
-            r = int(left)
-            if 1 <= r <= 5:
-                rating = r
-        text = right or None
-    else:
-        if raw.isdigit():
-            r = int(raw)
-            if 1 <= r <= 5:
-                rating = r
-        else:
-            text = raw or None
-    t = await get_t(session, msg.from_user.id)
-    try:
-        await crud.update_review_admin(session, requested_by_tg_id=msg.from_user.id, review_id=review_id, rating=rating, text=text)
-    except ValueError:
-        await msg.answer("Review not found")
-        await state.clear()
-        return
-    await state.clear()
-    t = await get_t(session, msg.from_user.id)
-    await msg.answer(t("admin.updated", "Updated ✅"))
 
 
 @router.callback_query(F.data == "adm:re:del")
