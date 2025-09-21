@@ -7,7 +7,14 @@ CREATE TABLE IF NOT EXISTS users (
   locale VARCHAR(5) DEFAULT 'uz',
   created_at TIMESTAMPTZ DEFAULT now()
 );
-
+Sardoba (5-mkr)
+Sardoba (Geofizika)
+Sardoba (Gijduvon)
+Sardoba (Severniy)
+Sardoba (5-мкр)
+Sardoba (Геофизика)
+Sardoba (Гиждуван)
+Sardoba (Северный)
 CREATE TABLE IF NOT EXISTS branches (
   id BIGSERIAL PRIMARY KEY,
   nameuz TEXT NOT NULL,
