@@ -6,6 +6,7 @@ from aiogram.types import InputMediaPhoto
 from app.config import settings
 from sqlalchemy.orm import joinedload
 from zoneinfo import ZoneInfo
+import html
 async def get_review_with_relations(session: AsyncSession, review_id: int) -> Review | None:
     q = await session.execute(
         select(Review)
@@ -351,16 +352,24 @@ async def notify_superadmin_group(bot: Bot, session: AsyncSession, super_admin_i
     # User haqida ma'lumot
     name = " ".join(filter(None, [user.first_name, user.last_name])) if user else "-"
     phone = user.phone if user and user.phone else "-"
-    tg_link = f"<a href='tg://user?id={user.tg_id}'>{name or 'User'}</a>" if user else "-"
+    branch_name = branch_name or "-"
+    review_text = review.text or "-"
+    
+    safe_name = html.escape(name)
+    safe_phone = html.escape(phone)
+    safe_branch = html.escape(branch_name)
+    safe_text = html.escape(review_text)
+    # Safe tg_link — keep only the <a> tag
+    tg_link = f"<a href='tg://user?id={user.tg_id}'>{safe_name or 'User'}</a>" if user else "-"
 
     # Caption formatlash
     caption = (
-        f"🆕 Yangi sharh!\n"
-        f"#{review.id} | ⭐ {review.rating or '-'}\n"
-        f"👤 {tg_link} | 📱 {phone}\n"
-        f"📍 {branch_name}\n"
-        f"💬 {review.text or '-'}\n"
-        f"🕒 {localtime.strftime('%Y-%m-%d %H:%M')}"
+    f"🆕 Yangi sharh!\n"
+    f"#{review.id} | ⭐ {review.rating or '-'}\n"
+    f"👤 {tg_link} | 📱 {safe_phone}\n"
+    f"📍 {safe_branch}\n"
+    f"💬 {safe_text}\n"
+    f"🕒 {localtime.strftime('%Y-%m-%d %H:%M')}"
     )
 
     photos = [p.file_id for p in (review.photos or [])]
