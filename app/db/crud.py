@@ -399,6 +399,9 @@ async def notify_superadmin_group(bot: Bot, session: AsyncSession, super_admin_i
                 else:
                     media.append(InputMediaPhoto(media=file_id))
             await bot.send_media_group(chat_id=group_id, media=media)
+             # ✅ Agar muvaffaqiyatli yuborilsa:
+        print(f"[notify_superadmin_group] ✅ Sharh #{review.id} guruhga yuborildi ({group_id})")
+
 
     except Exception as e:
         print(f"[notify_superadmin_group] ❌ Guruhga yuborishda xatolik: {e}")
