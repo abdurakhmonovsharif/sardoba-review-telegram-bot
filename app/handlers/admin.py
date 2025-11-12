@@ -548,7 +548,7 @@ async def users_list(cb: CallbackQuery, session):
     if not await is_admin(session, cb.from_user.id):
         return
     t = await get_t(session, cb.from_user.id)
-    users = await crud.list_users_admin(session, requested_by_tg_id=cb.from_user.id, limit=50)
+    users = await crud.list_users_admin(session, requested_by_tg_id=cb.from_user.id, limit=1000)
     if not users:
         await cb.message.edit_text(t("no_data", "Ma'lumot yo'q"), reply_markup=users_menu_kb(t))
         return
