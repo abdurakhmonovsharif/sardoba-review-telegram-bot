@@ -95,7 +95,7 @@ async def choose_branch(cb: CallbackQuery, state: FSMContext, session):
 
     await cb.message.delete()
     await cb.message.answer(
-        t("ask.rating_or_review", "Baholash yoki sharh/rasm qoldiring:"),
+        t("ask.rating_or_review", "Baholash yoki sharh yoki rasm qoldiring:"),
         reply_markup=review_menu_kb(t, can_submit=False)
     )
     await state.set_state(ReviewForm.confirm)
@@ -241,7 +241,7 @@ async def go_back_to_review_menu(cb: CallbackQuery, state: FSMContext, session):
 
     await cb.message.delete()
     await cb.message.answer(
-        t("ask.rating_or_review", "Baholash yoki sharh/rasm qoldiring:"),
+        t("ask.rating_or_review", "Baholash yoki sharh yoki rasm qoldiring:"),
         reply_markup=review_menu_kb(
             t,
             can_submit=can_submit,
@@ -279,9 +279,9 @@ async def submit_review(cb: CallbackQuery, state: FSMContext, session):
     t = await get_t(session, cb.from_user.id)
 
     if not (data.get("rating") or data.get("text") or data.get("photos")):
-        await cb.answer(t("review.submit.empty", "Kamida bittasini tanlang: Reyting, Izoh yoki Rasm."), show_alert=True)
+        await cb.answer(t("review.submit.empty", "Kamida bittasini tanlang: Sharh yoki Rasm."), show_alert=True)
         await cb.message.edit_text(
-            t("ask.rating_or_review", "Baholash yoki sharh/rasm qoldiring:"),
+            t("ask.rating_or_review", "Baholash yoki sharh yoki rasm qoldiring:"),
             reply_markup=review_menu_kb(
                 t,
                 can_submit=False,
