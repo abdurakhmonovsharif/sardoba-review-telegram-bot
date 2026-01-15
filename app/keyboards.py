@@ -32,16 +32,22 @@ def branches_kb(branches: list, locale: str = "uz"):
     kb.adjust(1)
     return kb.as_markup()
 
-def review_menu_kb(t, can_submit: bool = False):
+def review_menu_kb(
+    t: Callable[[str, str], str],
+    can_submit: bool = False,
+    allow_add_text: bool = True,
+    allow_add_photo: bool = True,
+    show_back: bool = True,
+):
     kb = InlineKeyboardBuilder()
-    kb.button(text="⭐ " + t("btn.add_rating", "Reyting"), callback_data="add_rating")
-    kb.button(text="✍️ " + t("btn.add_text", "Sharh yozish"), callback_data="add_text")
-    kb.button(text="📷 " + t("btn.add_photo", "Rasm yuborish"), callback_data="add_photo")
+    if allow_add_text:
+        kb.button(text="✍️ " + t("btn.add_text", "Sharh yozish"), callback_data="add_text")
+    if allow_add_photo:
+        kb.button(text="📷 " + t("btn.add_photo", "Rasm yuborish"), callback_data="add_photo")
     if can_submit:
         kb.button(text="✅ " + t("btn.submit", "Yuborish"), callback_data="submit_review")
-    # Back to branch selection
-    kb.button(text=t("common.kb.back", "⬅ Orqaga"), callback_data="go_back_choose_branch")
-    # If submit is hidden, keep layout 2x2 + back; if submit visible, it will also fit rows nicely
+    if show_back:
+        kb.button(text=t("common.kb.back", "⬅ Orqaga"), callback_data="go_back_choose_branch")
     kb.adjust(2, 2, 1)
     return kb.as_markup()
 

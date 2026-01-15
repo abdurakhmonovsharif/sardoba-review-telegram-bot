@@ -114,12 +114,17 @@ async def add_rating(cb: CallbackQuery, state: FSMContext, session):
 async def choose_rating(cb: CallbackQuery, state: FSMContext, session):
     rating = int(cb.data.split(":")[1])
     await state.update_data(rating=rating)
+    data = await state.get_data()
     t = await get_t(session, cb.from_user.id)
 
     await cb.message.delete()
     await cb.message.answer(
         f"{t('saved', 'Rahmat!')} ⭐ {rating}",
-        reply_markup=review_menu_kb(t, can_submit=True)
+        reply_markup=review_menu_kb(
+            t,
+            can_submit=True,
+            allow_add_text=not bool(data.get("text")),
+        ),
     )
     await state.set_state(ReviewForm.confirm)
 
@@ -154,7 +159,13 @@ async def save_text(msg: Message, state: FSMContext, session):
     t = await get_t(session, msg.from_user.id)
     await msg.answer(
         t("saved", "Sharhingiz qabul qilindi ✅"),
-        reply_markup=review_menu_kb(t, can_submit=True)
+        reply_markup=review_menu_kb(
+            t,
+            can_submit=True,
+            allow_add_text=False,
+            allow_add_photo=True,
+            show_back=True,
+        ),
     )
     await state.set_state(ReviewForm.confirm)
 
@@ -168,7 +179,13 @@ async def save_single_photo(msg: Message, state: FSMContext, session):
     t = await get_t(session, msg.from_user.id)
     await msg.answer(
         t("saved.photo", "📷 Rasm qabul qilindi ✅"),
-        reply_markup=review_menu_kb(t, can_submit=True),
+        reply_markup=review_menu_kb(
+            t,
+            can_submit=True,
+            allow_add_text=False,
+            allow_add_photo=False,
+            show_back=False,
+        ),
     )
     await state.set_state(ReviewForm.confirm)
 
@@ -192,7 +209,13 @@ async def save_album(msg: Message, state: FSMContext, session):
         t = await get_t(session, msg.from_user.id)
         await msg.answer(
             t("saved.album", f"📷 {len(file_ids)} ta rasm qabul qilindi ✅"),
-            reply_markup=review_menu_kb(t, can_submit=True),
+            reply_markup=review_menu_kb(
+                t,
+                can_submit=True,
+                allow_add_text=False,
+                allow_add_photo=False,
+                show_back=False,
+            ),
         )
         await state.set_state(ReviewForm.confirm)
 
@@ -209,6 +232,46 @@ async def ask_photo(cb: CallbackQuery, state: FSMContext, session):
     await state.set_state(ReviewForm.text)  # 👈 universal handler ishlaydi
 
 
+@router.callback_query(F.data == "go_back_choose_review")
+async def go_back_to_review_menu(cb: CallbackQuery, state: FSMContext, session):
+    data = await state.get_data()
+    t = await get_t(session, cb.from_user.id)
+    can_submit = bool(data.get("rating") or data.get("text") or data.get("photos"))
+    has_photo = bool(data.get("photos"))
+
+    await cb.message.delete()
+    await cb.message.answer(
+        t("ask.rating_or_review", "Baholash yoki sharh/rasm qoldiring:"),
+        reply_markup=review_menu_kb(
+            t,
+            can_submit=can_submit,
+            allow_add_text=not bool(data.get("text")),
+            allow_add_photo=not has_photo,
+            show_back=not has_photo,
+        ),
+    )
+    await state.set_state(ReviewForm.confirm)
+
+
+@router.callback_query(F.data == "go_back_choose_branch")
+async def go_back_to_branch_selection(cb: CallbackQuery, state: FSMContext, session):
+    t = await get_t(session, cb.from_user.id)
+    branches = await crud.list_branches(session)
+    if not branches:
+        await cb.message.edit_text(t("branch.empty", "Hozircha filiallar yo‘q."))
+        await state.clear()
+        return
+
+    locale = getattr(getattr(t, "__self__", None), "locale", "uz")
+
+    await cb.message.delete()
+    await cb.message.answer(
+        t("ask.branch", "Filialni tanlang:"),
+        reply_markup=branches_kb(branches, locale=locale),
+    )
+    await state.set_state(ReviewForm.branch)
+
+
 # ✅ Yakuniy yuborish
 @router.callback_query(F.data == "submit_review")
 async def submit_review(cb: CallbackQuery, state: FSMContext, session):
@@ -219,7 +282,13 @@ async def submit_review(cb: CallbackQuery, state: FSMContext, session):
         await cb.answer(t("review.submit.empty", "Kamida bittasini tanlang: Reyting, Izoh yoki Rasm."), show_alert=True)
         await cb.message.edit_text(
             t("ask.rating_or_review", "Baholash yoki sharh/rasm qoldiring:"),
-            reply_markup=review_menu_kb(t, can_submit=False)
+            reply_markup=review_menu_kb(
+                t,
+                can_submit=False,
+                allow_add_text=not bool(data.get("text")),
+                allow_add_photo=not bool(data.get("photos")),
+                show_back=not bool(data.get("photos")),
+            )
         )
         return
 
@@ -237,7 +306,7 @@ async def submit_review(cb: CallbackQuery, state: FSMContext, session):
     )
     await state.clear()
     await cb.message.delete()
-    await cb.message.answer(t("saved", "Rahmat! Sharhingiz saqlandi 🙏"))
+    await cb.message.answer(t("saved", "Rahmat! Sharhingiz saqlandi"))
     await crud.notify_superadmin_group(cb.bot, session, settings.SUPER_ADMINS[0], review)
     await cb.message.answer(
         t("ask.new_review", "Yangi sharh boshlash uchun tugmani bosing."),
