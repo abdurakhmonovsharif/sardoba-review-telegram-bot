@@ -365,7 +365,7 @@ async def notify_superadmin_group(bot: Bot, session: AsyncSession, super_admin_i
     # Caption formatlash
     caption = (
     f"🆕 Yangi sharh!\n"
-    f"#{review.id} | ⭐ {review.rating or '-'}\n"
+    f"#{review.id} | \n"
     f"👤 {tg_link} | 📱 {safe_phone}\n"
     f"📍 {safe_branch}\n"
     f"💬 {safe_text}\n"
