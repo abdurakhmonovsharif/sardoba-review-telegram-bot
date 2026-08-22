@@ -26,35 +26,36 @@ class ReviewNotificationTests(unittest.TestCase):
                 with patch.dict(os.environ, {"TEST_FLAG": value}):
                     self.assertFalse(_env_bool("TEST_FLAG"))
 
-    def test_batch_mode_waits_until_a_complete_batch_exists(self):
+    def test_sparse_mode_skips_the_first_ten_reviews(self):
         session = SimpleNamespace(
-            execute=AsyncMock(return_value=SimpleNamespace(scalar=lambda: 4)),
+            execute=AsyncMock(return_value=SimpleNamespace(scalar=lambda: 10)),
         )
-        review = SimpleNamespace(id=5)
+        review = SimpleNamespace(id=10, group_notified=False)
 
         with patch.object(crud.settings, "REVIEW_GROUP_BATCH_ENABLED", True), \
                 patch.object(crud.settings, "REVIEW_GROUP_BATCH_SIZE", 10), \
                 patch.object(crud, "get_admin_group", new=AsyncMock(return_value=123)), \
-                patch.object(crud, "_get_pending_review_batch", new=AsyncMock(return_value=[])), \
+                patch.object(crud, "get_review_with_relations", new=AsyncMock(return_value=review)), \
                 patch.object(crud, "_send_review_to_group", new=AsyncMock()) as send:
             self.run_async(crud.notify_superadmin_group(None, session, 1, review))
 
         send.assert_not_awaited()
         session.execute.assert_awaited_once()
 
-    def test_batch_mode_sends_and_marks_all_reviews_in_the_batch(self):
-        reviews = [SimpleNamespace(id=index, group_notified=False) for index in range(1, 11)]
+    def test_sparse_mode_sends_only_the_eleventh_review(self):
+        review = SimpleNamespace(id=11, group_notified=False)
         session = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
 
         with patch.object(crud.settings, "REVIEW_GROUP_BATCH_ENABLED", True), \
                 patch.object(crud.settings, "REVIEW_GROUP_BATCH_SIZE", 10), \
                 patch.object(crud, "get_admin_group", new=AsyncMock(return_value=123)), \
-                patch.object(crud, "_get_pending_review_batch", new=AsyncMock(return_value=reviews)), \
+                patch.object(crud, "get_review_with_relations", new=AsyncMock(return_value=review)), \
                 patch.object(crud, "_send_review_to_group", new=AsyncMock(return_value=True)) as send:
-            self.run_async(crud.notify_superadmin_group(None, session, 1, SimpleNamespace(id=10)))
+            session.execute = AsyncMock(return_value=SimpleNamespace(scalar=lambda: 11))
+            self.run_async(crud.notify_superadmin_group(None, session, 1, review))
 
-        self.assertTrue(all(review.group_notified for review in reviews))
-        self.assertEqual(send.await_count, 10)
+        self.assertTrue(review.group_notified)
+        send.assert_awaited_once()
         session.commit.assert_awaited_once()
 
     def test_disabled_mode_keeps_immediate_notification(self):
@@ -70,26 +71,6 @@ class ReviewNotificationTests(unittest.TestCase):
         send.assert_awaited_once()
         self.assertTrue(review.group_notified)
         session.commit.assert_awaited_once()
-
-    def test_batch_mode_keeps_successful_items_marked_when_a_later_send_fails(self):
-        reviews = [SimpleNamespace(id=index, group_notified=False) for index in range(1, 4)]
-        session = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
-
-        async def send_review(_bot, _group_id, review):
-            return review.id != 2
-
-        with patch.object(crud.settings, "REVIEW_GROUP_BATCH_ENABLED", True), \
-                patch.object(crud.settings, "REVIEW_GROUP_BATCH_SIZE", 3), \
-                patch.object(crud, "get_admin_group", new=AsyncMock(return_value=123)), \
-                patch.object(crud, "_get_pending_review_batch", new=AsyncMock(return_value=reviews)), \
-                patch.object(crud, "_send_review_to_group", side_effect=send_review):
-            self.run_async(crud.notify_superadmin_group(None, session, 1, SimpleNamespace(id=3)))
-
-        self.assertTrue(reviews[0].group_notified)
-        self.assertFalse(reviews[1].group_notified)
-        self.assertFalse(reviews[2].group_notified)
-        session.commit.assert_awaited_once()
-
 
 if __name__ == "__main__":
     unittest.main()

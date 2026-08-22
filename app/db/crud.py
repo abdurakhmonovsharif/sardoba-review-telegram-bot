@@ -403,86 +403,36 @@ async def _send_review_to_group(bot: Bot, group_id: int, review: Review) -> bool
         return False
 
 
-async def _get_pending_review_batch(
-    session: AsyncSession,
-    batch_size: int,
-) -> list[Review]:
-    """Lock one complete batch so concurrent review updates do not send duplicates."""
-    ids_result = await session.execute(
-        select(Review.id)
-        .where(Review.group_notified.is_(False))
-        .order_by(Review.id)
-        .limit(batch_size)
-        .with_for_update(skip_locked=True)
-    )
-    review_ids = list(ids_result.scalars().all())
-    if len(review_ids) < batch_size:
-        await session.rollback()
-        return []
-
-    reviews_result = await session.execute(
-        select(Review)
-        .options(
-            joinedload(Review.user),
-            joinedload(Review.branch),
-            joinedload(Review.photos),
-        )
-        .where(Review.id.in_(review_ids))
-        .order_by(Review.id)
-    )
-    reviews_by_id = {
-        review.id: review for review in reviews_result.unique().scalars().all()
-    }
-    return [reviews_by_id[review_id] for review_id in review_ids if review_id in reviews_by_id]
-
-
 async def notify_superadmin_group(bot: Bot, session: AsyncSession, super_admin_id: int, review: Review):
-    """Notify the superadmin group immediately or in persisted batches."""
+    """Notify every review or only every N+1 review, depending on the env flag."""
     group_id = await get_admin_group(session, super_admin_id)
     if not group_id:
         print("[notify_superadmin_group] ⚠️ Superadmin uchun group_id topilmadi")
-        return
-
-    if settings.REVIEW_GROUP_BATCH_ENABLED:
-        pending_reviews = await _get_pending_review_batch(
-            session,
-            settings.REVIEW_GROUP_BATCH_SIZE,
-        )
-        if not pending_reviews:
-            pending_count_result = await session.execute(
-                select(func.count(Review.id)).where(Review.group_notified.is_(False))
-            )
-            pending_count = int(pending_count_result.scalar() or 0)
-            print(
-                "[notify_superadmin_group] ⏳ Batching enabled: "
-                f"{pending_count}/{settings.REVIEW_GROUP_BATCH_SIZE} reviews pending"
-            )
-            return
-
-        sent_reviews = []
-        for pending_review in pending_reviews:
-            if not await _send_review_to_group(bot, group_id, pending_review):
-                for sent_review in sent_reviews:
-                    sent_review.group_notified = True
-                await session.commit()
-                print(
-                    "[notify_superadmin_group] ⚠️ Batch qisman yuborildi: "
-                    f"{len(sent_reviews)}/{len(pending_reviews)} ta sharh"
-                )
-                return
-            pending_review.group_notified = True
-            sent_reviews.append(pending_review)
-        await session.commit()
-        print(
-            "[notify_superadmin_group] ✅ Batch yuborildi: "
-            f"{len(pending_reviews)} ta sharh ({group_id})"
-        )
         return
 
     review = await get_review_with_relations(session, review.id)
     if not review:
         print(f"[notify_superadmin_group] ⚠️ Review id={review.id} topilmadi")
         return
+    if review.group_notified:
+        print(f"[notify_superadmin_group] ⏭️ Sharh #{review.id} allaqachon yuborilgan")
+        return
+
+    if settings.REVIEW_GROUP_BATCH_ENABLED:
+        review_count_result = await session.execute(
+            select(func.count(Review.id)).where(Review.id <= review.id)
+        )
+        review_count = int(review_count_result.scalar() or 0)
+        interval = settings.REVIEW_GROUP_BATCH_SIZE
+
+        # With interval=10, send only reviews 11, 21, 31, ...
+        should_send = review_count > interval and (review_count - 1) % interval == 0
+        if not should_send:
+            print(
+                "[notify_superadmin_group] ⏭️ Sharh o'tkazib yuborildi: "
+                f"#{review.id} ({review_count}-sharh, har {interval} tadan 1 ta)"
+            )
+            return
 
     if await _send_review_to_group(bot, group_id, review):
         review.group_notified = True

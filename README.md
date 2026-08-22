@@ -79,9 +79,9 @@ REVIEW_GROUP_BATCH_SIZE=10
 ```
 
 `REVIEW_GROUP_BATCH_ENABLED=false` keeps the current behavior and sends each
-review to the configured group immediately. Set it to `true` to send the
-oldest 10 unsent reviews together after the tenth review arrives. The batch
-size can be changed with `REVIEW_GROUP_BATCH_SIZE`.
+review to the configured group immediately. Set it to `true` to skip 10 reviews
+and send only the 11th, then the 21st, 31st, and so on. The interval can be
+changed with `REVIEW_GROUP_BATCH_SIZE`.
 
 ### 3. Run with Docker
 

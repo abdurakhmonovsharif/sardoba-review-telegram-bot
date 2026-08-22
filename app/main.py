@@ -30,8 +30,7 @@ logging.basicConfig(level=logging.INFO)
 async def lifespan(dp: Dispatcher):
     async with engine.begin() as conn:
         await conn.run_sync(models.Base.metadata.create_all)
-        # Existing deployments need this additive migration. Existing reviews
-        # are already historical and must not be sent when batching is enabled.
+        # Existing deployments need this additive migration for notification state.
         await conn.execute(
             text(
                 "ALTER TABLE reviews "
