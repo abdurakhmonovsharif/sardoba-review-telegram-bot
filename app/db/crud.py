@@ -10,10 +10,14 @@ import html
 async def get_review_with_relations(session: AsyncSession, review_id: int) -> Review | None:
     q = await session.execute(
         select(Review)
-        .options(joinedload(Review.user), joinedload(Review.branch))
+        .options(
+            joinedload(Review.user),
+            joinedload(Review.branch),
+            joinedload(Review.photos),
+        )
         .where(Review.id == review_id)
     )
-    return q.scalar_one_or_none()
+    return q.unique().scalar_one_or_none()
 
 async def upsert_user(session: AsyncSession, tg_id: int, **kwargs) -> User:
     q = await session.execute(select(User).where(User.tg_id == tg_id))
@@ -322,21 +326,8 @@ async def set_admin_group(session: AsyncSession, tg_id: int, group_id: int):
     await session.refresh(admin)
     return admin
 
-async def notify_superadmin_group(bot: Bot, session: AsyncSession, super_admin_id: int, review: Review):
-    """Yangi sharh haqida superadmin guruhiga xabar yuborish"""
-
-    # Guruh ID ni olish
-    group_id = await get_admin_group(session, super_admin_id)
-    if not group_id:
-        print("[notify_superadmin_group] ⚠️ Superadmin uchun group_id topilmadi")
-        return
-
-    # Review ni barcha relation’lari bilan qayta yuklab olish
-    review = await get_review_with_relations(session, review.id)
-    if not review:
-        print(f"[notify_superadmin_group] ⚠️ Review id={review.id} topilmadi")
-        return
-
+async def _send_review_to_group(bot: Bot, group_id: int, review: Review) -> bool:
+    """Send one review and return whether Telegram accepted the request."""
     user = review.user
     branch = review.branch
     if branch:
@@ -376,32 +367,125 @@ async def notify_superadmin_group(bot: Bot, session: AsyncSession, super_admin_i
 
     try:
         if not photos:
-            # faqat text
             await bot.send_message(
                 chat_id=group_id,
                 text=caption,
-                parse_mode="HTML"
+                parse_mode="HTML",
             )
         elif len(photos) == 1:
-            # bitta rasm
             await bot.send_photo(
                 chat_id=group_id,
                 photo=photos[0],
                 caption=caption,
-                parse_mode="HTML"
+                parse_mode="HTML",
             )
         else:
-            # ko‘p rasm → media group
             media = []
             for idx, file_id in enumerate(photos):
                 if idx == 0:
-                    media.append(InputMediaPhoto(media=file_id, caption=caption, parse_mode="HTML"))
+                    media.append(
+                        InputMediaPhoto(
+                            media=file_id,
+                            caption=caption,
+                            parse_mode="HTML",
+                        )
+                    )
                 else:
                     media.append(InputMediaPhoto(media=file_id))
             await bot.send_media_group(chat_id=group_id, media=media)
-             # ✅ Agar muvaffaqiyatli yuborilsa:
-        print(f"[notify_superadmin_group] ✅ Sharh #{review.id} guruhga yuborildi ({group_id})")
-
-
+        print(
+            f"[notify_superadmin_group] ✅ Sharh #{review.id} guruhga yuborildi "
+            f"({group_id})"
+        )
+        return True
     except Exception as e:
         print(f"[notify_superadmin_group] ❌ Guruhga yuborishda xatolik: {e}")
+        return False
+
+
+async def _get_pending_review_batch(
+    session: AsyncSession,
+    batch_size: int,
+) -> list[Review]:
+    """Lock one complete batch so concurrent review updates do not send duplicates."""
+    ids_result = await session.execute(
+        select(Review.id)
+        .where(Review.group_notified.is_(False))
+        .order_by(Review.id)
+        .limit(batch_size)
+        .with_for_update(skip_locked=True)
+    )
+    review_ids = list(ids_result.scalars().all())
+    if len(review_ids) < batch_size:
+        await session.rollback()
+        return []
+
+    reviews_result = await session.execute(
+        select(Review)
+        .options(
+            joinedload(Review.user),
+            joinedload(Review.branch),
+            joinedload(Review.photos),
+        )
+        .where(Review.id.in_(review_ids))
+        .order_by(Review.id)
+    )
+    reviews_by_id = {
+        review.id: review for review in reviews_result.unique().scalars().all()
+    }
+    return [reviews_by_id[review_id] for review_id in review_ids if review_id in reviews_by_id]
+
+
+async def notify_superadmin_group(bot: Bot, session: AsyncSession, super_admin_id: int, review: Review):
+    """Notify the superadmin group immediately or in persisted batches."""
+    group_id = await get_admin_group(session, super_admin_id)
+    if not group_id:
+        print("[notify_superadmin_group] ⚠️ Superadmin uchun group_id topilmadi")
+        return
+
+    if settings.REVIEW_GROUP_BATCH_ENABLED:
+        pending_reviews = await _get_pending_review_batch(
+            session,
+            settings.REVIEW_GROUP_BATCH_SIZE,
+        )
+        if not pending_reviews:
+            pending_count_result = await session.execute(
+                select(func.count(Review.id)).where(Review.group_notified.is_(False))
+            )
+            pending_count = int(pending_count_result.scalar() or 0)
+            print(
+                "[notify_superadmin_group] ⏳ Batching enabled: "
+                f"{pending_count}/{settings.REVIEW_GROUP_BATCH_SIZE} reviews pending"
+            )
+            return
+
+        sent_reviews = []
+        for pending_review in pending_reviews:
+            if not await _send_review_to_group(bot, group_id, pending_review):
+                for sent_review in sent_reviews:
+                    sent_review.group_notified = True
+                await session.commit()
+                print(
+                    "[notify_superadmin_group] ⚠️ Batch qisman yuborildi: "
+                    f"{len(sent_reviews)}/{len(pending_reviews)} ta sharh"
+                )
+                return
+            pending_review.group_notified = True
+            sent_reviews.append(pending_review)
+        await session.commit()
+        print(
+            "[notify_superadmin_group] ✅ Batch yuborildi: "
+            f"{len(pending_reviews)} ta sharh ({group_id})"
+        )
+        return
+
+    review = await get_review_with_relations(session, review.id)
+    if not review:
+        print(f"[notify_superadmin_group] ⚠️ Review id={review.id} topilmadi")
+        return
+
+    if await _send_review_to_group(bot, group_id, review):
+        review.group_notified = True
+        await session.commit()
+    else:
+        await session.rollback()

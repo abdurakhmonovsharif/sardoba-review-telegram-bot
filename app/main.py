@@ -14,6 +14,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand
+from sqlalchemy import text
 
 from app.config import settings
 from app.db import models
@@ -29,6 +30,20 @@ logging.basicConfig(level=logging.INFO)
 async def lifespan(dp: Dispatcher):
     async with engine.begin() as conn:
         await conn.run_sync(models.Base.metadata.create_all)
+        # Existing deployments need this additive migration. Existing reviews
+        # are already historical and must not be sent when batching is enabled.
+        await conn.execute(
+            text(
+                "ALTER TABLE reviews "
+                "ADD COLUMN IF NOT EXISTS group_notified BOOLEAN NOT NULL DEFAULT TRUE"
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_reviews_group_notified_id "
+                "ON reviews (group_notified, id)"
+            )
+        )
     yield
 
 

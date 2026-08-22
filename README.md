@@ -61,25 +61,40 @@ reviewbot/
 ```bash
 git clone git@github.com:abdurakhmonovsharif/sardoba-review-telegram-bot.git
 cd sardoba-review-telegram-bot
+```
 
-2. Configure environment
+### 2. Configure environment
 
 Copy .env.example → .env and fill:
 
+```dotenv
 BOT_TOKEN=123456:ABC-YourTokenHere
 POSTGRES_USER=review
 POSTGRES_PASSWORD=reviewpass
 POSTGRES_DB=reviewdb
 DATABASE_URL=postgresql+asyncpg://review:reviewpass@db:5432/reviewdb
 SUPER_ADMINS=123456789
+REVIEW_GROUP_BATCH_ENABLED=false
+REVIEW_GROUP_BATCH_SIZE=10
+```
 
-3. Run with Docker
+`REVIEW_GROUP_BATCH_ENABLED=false` keeps the current behavior and sends each
+review to the configured group immediately. Set it to `true` to send the
+oldest 10 unsent reviews together after the tenth review arrives. The batch
+size can be changed with `REVIEW_GROUP_BATCH_SIZE`.
 
+### 3. Run with Docker
+
+```bash
 docker compose up -d --build
+```
 
-4. Interact with the bot
-	•	Send /start → choose language → register → leave a review
-	•	Admins use /admin_sardoba → view statistics
+After changing `.env`, run the same command to recreate the bot container.
+
+### 4. Interact with the bot
+
+- Send `/start` → choose language → register → leave a review
+- Admins use `/admin_sardoba` → view statistics
 
 ⸻
 

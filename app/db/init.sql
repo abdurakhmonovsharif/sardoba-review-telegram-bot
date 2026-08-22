@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS reviews (
   branch_id SMALLINT REFERENCES branches(id) ON DELETE CASCADE,
   rating SMALLINT CHECK (rating BETWEEN 1 AND 5),  
   text TEXT,
+  group_notified BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
